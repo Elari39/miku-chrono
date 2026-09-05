@@ -219,6 +219,16 @@ func (s *StatsService) ActivityTotals(fromDate, toDate string) ([]models.Activit
 	return out, nil
 }
 
+// MonthlyStacked returns per-month totals (with per-activity buckets) for the
+// given local year, used by the statistics page's yearly view. Months without
+// data are simply absent; the frontend fills the empty ones.
+func (s *StatsService) MonthlyStacked(year int) ([]models.MonthBucket, error) {
+	if year < 1970 || year > 9999 {
+		return nil, fmt.Errorf("年份超出支持范围: %d", year)
+	}
+	return s.Store.MonthBuckets(fmt.Sprintf("%04d", year))
+}
+
 // Streaks returns current and longest consecutive check-in days. A nil
 // activity id means across all activities.
 func (s *StatsService) Streaks(req models.StreakRequest) (models.StreakInfo, error) {

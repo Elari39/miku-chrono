@@ -109,6 +109,46 @@ func (s *Store) DayBuckets(fromDate, toDate string) ([]models.DayBucket, error) 
 	return out, nil
 }
 
+// MonthBuckets returns per-month per-activity seconds for the given local
+// year ("2006" layout), only for months that have data. Used by the yearly
+// view of the statistics page.
+func (s *Store) MonthBuckets(year string) ([]models.MonthBucket, error) {
+	rows, err := s.db.Query(
+		`SELECT substr(started_at,1,7), activity_id, SUM(duration_seconds) FROM entries
+		 WHERE substr(started_at,1,7) LIKE ? || '-%'
+		 GROUP BY substr(started_at,1,7), activity_id ORDER BY substr(started_at,1,7)`,
+		year)
+	if err != nil {
+		return nil, fmt.Errorf("month buckets: %w", err)
+	}
+	defer rows.Close()
+	buckets := map[string]*models.MonthBucket{}
+	var order []string
+	for rows.Next() {
+		var month string
+		var activityID, secs int64
+		if err := rows.Scan(&month, &activityID, &secs); err != nil {
+			return nil, err
+		}
+		b, ok := buckets[month]
+		if !ok {
+			b = &models.MonthBucket{Month: month, ByActivity: map[string]int64{}}
+			buckets[month] = b
+			order = append(order, month)
+		}
+		b.ByActivity[fmt.Sprint(activityID)] = secs
+		b.Total += secs
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	out := make([]models.MonthBucket, 0, len(order))
+	for _, m := range order {
+		out = append(out, *buckets[m])
+	}
+	return out, nil
+}
+
 // ActivityTotalsBetween sums recorded seconds per activity between two local
 // dates (inclusive).
 func (s *Store) ActivityTotalsBetween(fromDate, toDate string) (map[int64]int64, error) {

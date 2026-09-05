@@ -37,6 +37,15 @@ export function Heatmap(days: number): $CancellablePromise<{ [_ in string]?: num
 }
 
 /**
+ * MonthlyStacked returns per-month totals (with per-activity buckets) for the
+ * given local year, used by the statistics page's yearly view. Months without
+ * data are simply absent; the frontend fills the empty ones.
+ */
+export function MonthlyStacked(year: number): $CancellablePromise<models$0.MonthBucket[] | null> {
+    return $Call.ByID(1864472321, year);
+}
+
+/**
  * Overview returns per-activity today totals, all-time totals and current
  * streaks for the check-in page.
  */

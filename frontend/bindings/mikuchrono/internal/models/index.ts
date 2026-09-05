@@ -11,6 +11,7 @@ export type {
     Entry,
     EntryFilter,
     EntryList,
+    MonthBucket,
     StreakInfo,
     StreakRequest,
     TimerState

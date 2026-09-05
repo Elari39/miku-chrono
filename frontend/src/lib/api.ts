@@ -17,6 +17,7 @@ import type {
   Entry,
   EntryFilter,
   EntryList,
+  MonthBucket,
   StreakInfo,
   TimerState,
 } from "../../bindings/mikuchrono/internal/models/models";
@@ -40,6 +41,7 @@ export type {
   Entry,
   EntryFilter,
   EntryList,
+  MonthBucket,
   StreakInfo,
   TimerState,
 };

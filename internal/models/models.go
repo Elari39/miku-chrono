@@ -95,6 +95,14 @@ type DayBucket struct {
 	ByActivity map[string]int64 `json:"byActivity"`
 }
 
+// MonthBucket aggregates one local month ("YYYY-MM") for the yearly view
+// of the statistics page. Same shape as DayBucket, month granularity.
+type MonthBucket struct {
+	Month      string           `json:"month"`
+	Total      int64            `json:"total"`
+	ByActivity map[string]int64 `json:"byActivity"`
+}
+
 // ActivityTotal is the total recorded time of one activity in a range.
 type ActivityTotal struct {
 	Activity Activity `json:"activity"`

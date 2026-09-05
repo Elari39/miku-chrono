@@ -108,6 +108,16 @@ export interface EntryList {
 }
 
 /**
+ * MonthBucket aggregates one local month ("YYYY-MM") for the yearly view
+ * of the statistics page. Same shape as DayBucket, month granularity.
+ */
+export interface MonthBucket {
+    "month": string;
+    "total": number;
+    "byActivity": { [_ in string]?: number } | null;
+}
+
+/**
  * StreakInfo carries current and longest consecutive check-in days.
  */
 export interface StreakInfo {
