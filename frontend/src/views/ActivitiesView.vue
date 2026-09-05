@@ -454,7 +454,7 @@ onMounted(load);
       confirm-text="删除"
       :message="
         deleteCatTarget
-          ? (activityCountByCategory.get(deleteCatTarget.id) ?? 0 > 0)
+          ? (activityCountByCategory.get(deleteCatTarget.id) ?? 0) > 0
             ? `删除类别「${deleteCatTarget.name}」后，该类别下的 ${activityCountByCategory.get(deleteCatTarget.id)} 个活动将变为未分类，所有记录都会保留。确定继续吗？`
             : `删除类别「${deleteCatTarget.name}」？该类别下没有活动，所有记录不受影响。`
           : ''

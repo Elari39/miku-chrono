@@ -111,7 +111,7 @@ onBeforeUnmount(() => {
   <div class="relative h-full w-full select-none" @contextmenu="onContextMenu">
     <!-- The pill: whole surface is a drag handle + native context-menu binding. -->
     <div
-      class="absolute inset-x-1 top-1 bottom-1 flex cursor-grab items-center gap-2.5 rounded-full bg-surface-dark px-3.5 text-white"
+      class="absolute inset-x-1 top-1 bottom-1 flex cursor-grab items-center gap-2.5 rounded-full bg-surface-dark px-3.5 text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       style="
         --wails-draggable: drag;
         --custom-contextmenu: ball-menu;

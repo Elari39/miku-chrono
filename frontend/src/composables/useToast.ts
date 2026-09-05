@@ -11,8 +11,12 @@ export interface Toast {
 const toasts = ref<Toast[]>([]);
 let nextId = 1;
 
+/** Cap concurrent toasts so a burst of errors cannot cover the whole screen. */
+const MAX_TOASTS = 4;
+
 function push(text: string, kind: ToastKind) {
   const id = nextId++;
+  if (toasts.value.length >= MAX_TOASTS) toasts.value.shift();
   toasts.value.push({ id, text, kind });
   window.setTimeout(() => {
     toasts.value = toasts.value.filter((t) => t.id !== id);

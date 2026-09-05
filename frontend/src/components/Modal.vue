@@ -51,7 +51,7 @@ watch(
       previousFocus = document.activeElement as HTMLElement | null;
       await nextTick();
       panel.value?.querySelector<HTMLElement>("button, [href], input, select, textarea")?.focus();
-    } else if (previousFocus) {
+    } else if (previousFocus?.isConnected) {
       previousFocus.focus();
       previousFocus = null;
     }

@@ -17,7 +17,7 @@ const dots: Record<string, string> = {
 
 <template>
   <Teleport to="body">
-    <div class="fixed right-5 bottom-5 z-[60] flex flex-col gap-2">
+    <div role="status" aria-live="polite" class="fixed right-5 bottom-5 z-[60] flex flex-col gap-2">
       <TransitionGroup
         enter-active-class="transition duration-200 ease-out"
         enter-from-class="translate-y-2 opacity-0"

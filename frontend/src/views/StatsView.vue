@@ -120,7 +120,7 @@ async function loadPeriod(isCurrent: () => boolean) {
 const { loading } = useVersionedLoad(loadPeriod, {
   triggers: [gran, anchor],
 });
-const { reload: reloadStreak } = useVersionedLoad(async (isCurrent) => {
+useVersionedLoad(async (isCurrent) => {
   try {
     const s = await StatsService.Streaks({ activityId: null });
     if (!isCurrent()) return;
@@ -129,7 +129,6 @@ const { reload: reloadStreak } = useVersionedLoad(async (isCurrent) => {
     console.error(err);
   }
 });
-void reloadStreak;
 
 // ---- navigation ----
 const QUICK_LABELS: Record<Granularity, string> = {
