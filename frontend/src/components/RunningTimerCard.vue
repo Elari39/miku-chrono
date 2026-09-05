@@ -27,8 +27,14 @@ async function onStop() {
   >
     <div class="flex items-center gap-4">
       <span class="relative flex h-3.5 w-3.5">
-        <span class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60" :style="{ backgroundColor: state.activityColor }" />
-        <span class="relative inline-flex h-3.5 w-3.5 rounded-full" :style="{ backgroundColor: state.activityColor }" />
+        <span
+          class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60"
+          :style="{ backgroundColor: state.activityColor }"
+        />
+        <span
+          class="relative inline-flex h-3.5 w-3.5 rounded-full"
+          :style="{ backgroundColor: state.activityColor }"
+        />
       </span>
       <div>
         <div class="text-lg font-semibold">{{ state.activityName || "计时中" }}</div>
@@ -36,7 +42,11 @@ async function onStop() {
       </div>
     </div>
     <div class="flex items-center gap-6">
-      <DurationText :seconds="state.elapsed" mode="clock" class="text-4xl font-semibold tracking-wide text-white" />
+      <DurationText
+        :seconds="state.elapsed"
+        mode="clock"
+        class="text-4xl font-semibold tracking-wide text-white"
+      />
       <button class="mc-btn-primary px-5 py-2.5" @click="onStop">停止</button>
     </div>
   </div>

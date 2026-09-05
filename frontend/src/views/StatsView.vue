@@ -1,19 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
-import {
-  StatsService,
-  type ActivityTotal,
-  type DayBucket,
-  type StreakInfo,
-} from "../lib/api";
+import { computed, ref } from "vue";
+import { StatsService, type ActivityTotal, type DayBucket, type StreakInfo } from "../lib/api";
 import { useToast } from "../composables/useToast";
-import { useTimer } from "../composables/useTimer";
+import { useVersionedLoad } from "../composables/useVersionedLoad";
 import { daysAgoStr, formatDurationLong, todayStr } from "../lib/format";
 import BarChart from "../components/BarChart.vue";
 import Heatmap from "../components/Heatmap.vue";
 import StreakCard from "../components/StreakCard.vue";
 
-const { version } = useTimer();
 const { error } = useToast();
 type RangePreset = 7 | 30 | 90;
 const preset = ref<RangePreset>(7);
@@ -41,31 +35,48 @@ function applyPreset(days: RangePreset) {
   preset.value = days;
   fromDate.value = daysAgoStr(days - 1);
   toDate.value = todayStr();
+  void reloadRange();
 }
 
-async function load() {
+function onDateInputChange() {
+  preset.value = 0 as unknown as RangePreset;
+  void reloadRange();
+}
+
+// Range-dependent data reloads on mount, timer changes, and range changes.
+const { reload: reloadRange } = useVersionedLoad(async (isCurrent) => {
   try {
-    const [b, t, h, s] = await Promise.all([
+    const [b, t] = await Promise.all([
       StatsService.DailyStacked(fromDate.value, toDate.value),
       StatsService.ActivityTotals(fromDate.value, toDate.value),
+    ]);
+    if (!isCurrent()) return;
+    buckets.value = b ?? [];
+    totals.value = t ?? [];
+  } catch (err) {
+    console.error(err);
+    error("加载统计数据失败");
+  }
+});
+
+// Heatmap and streaks are range-independent; the composable only reloads them
+// on mount and on timer changes (today's cell / current streak are affected by
+// start/stop), so range switches never re-fetch them.
+useVersionedLoad(async (isCurrent) => {
+  try {
+    const [h, s] = await Promise.all([
       StatsService.Heatmap(119),
       StatsService.Streaks({ activityId: null }),
     ]);
-    buckets.value = b ?? [];
-    totals.value = t ?? [];
+    if (!isCurrent()) return;
     // Normalize: generated map type is Record<string, number | undefined>.
-    heatmapDays.value = Object.fromEntries(
-      Object.entries(h ?? {}).map(([k, v]) => [k, v ?? 0]),
-    );
+    heatmapDays.value = Object.fromEntries(Object.entries(h ?? {}).map(([k, v]) => [k, v ?? 0]));
     overallStreak.value = s ?? { current: 0, longest: 0 };
   } catch (err) {
     console.error(err);
     error("加载统计数据失败");
   }
-}
-
-watch(version, () => void load());
-onMounted(load);
+});
 </script>
 
 <template>
@@ -80,12 +91,14 @@ onMounted(load);
             class="cursor-pointer rounded-md px-3 py-1.5 text-sm transition-colors"
             :class="preset === d ? 'bg-primary text-white' : 'text-body hover:bg-surface-card'"
             @click="applyPreset(d)"
-          >{{ d }}天</button>
+          >
+            {{ d }}天
+          </button>
         </div>
-        <input v-model="fromDate" type="date" class="mc-input w-36" @change="preset = 0 as unknown as RangePreset" />
+        <input v-model="fromDate" type="date" class="mc-input w-36" @change="onDateInputChange" />
         <span class="text-muted">–</span>
-        <input v-model="toDate" type="date" class="mc-input w-36" @change="preset = 0 as unknown as RangePreset" />
-        <button class="mc-btn-ghost" @click="load">应用</button>
+        <input v-model="toDate" type="date" class="mc-input w-36" @change="onDateInputChange" />
+        <button class="mc-btn-ghost" @click="reloadRange">应用</button>
       </div>
     </div>
 
@@ -95,7 +108,10 @@ onMounted(load);
           <h3 class="text-sm font-medium text-muted">每日专注时长</h3>
           <div class="flex items-center gap-3 text-xs text-muted">
             <span v-for="t in totals" :key="t.activity.id" class="flex items-center gap-1">
-              <span class="h-2.5 w-2.5 rounded-[3px]" :style="{ backgroundColor: t.activity.color }" />
+              <span
+                class="h-2.5 w-2.5 rounded-[3px]"
+                :style="{ backgroundColor: t.activity.color }"
+              />
               {{ t.activity.name }}
             </span>
           </div>
@@ -107,7 +123,9 @@ onMounted(load);
         <StreakCard :info="overallStreak" title="连续打卡（全部活动）" />
         <div class="mc-card p-5">
           <h3 class="mb-3 text-sm font-medium text-muted">时段合计</h3>
-          <p class="font-display text-3xl font-semibold text-ink">{{ formatDurationLong(grandTotal) }}</p>
+          <p class="font-display text-3xl font-semibold text-ink">
+            {{ formatDurationLong(grandTotal) }}
+          </p>
           <div class="mt-4 flex flex-col gap-2.5">
             <div v-for="t in totals" :key="t.activity.id">
               <div class="mb-1 flex justify-between text-xs">
@@ -117,7 +135,10 @@ onMounted(load);
               <div class="h-1.5 overflow-hidden rounded-full bg-surface-card">
                 <div
                   class="h-full rounded-full"
-                  :style="{ width: grandTotal > 0 ? (t.seconds / grandTotal) * 100 + '%' : '0%', backgroundColor: t.activity.color }"
+                  :style="{
+                    width: grandTotal > 0 ? (t.seconds / grandTotal) * 100 + '%' : '0%',
+                    backgroundColor: t.activity.color,
+                  }"
                 />
               </div>
             </div>

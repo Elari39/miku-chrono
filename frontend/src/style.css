@@ -35,10 +35,12 @@ html,
 body,
 #app {
   height: 100%;
+  margin: 0;
+  background: transparent;
 }
 
 body {
-  @apply bg-canvas font-sans text-body antialiased;
+  @apply font-sans text-body antialiased;
   overflow: hidden; /* the app shell handles its own scrolling */
 }
 

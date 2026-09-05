@@ -21,5 +21,25 @@ import type {
   TimerState,
 } from "../../bindings/mikuchrono/internal/models/models";
 
-export { TimerService, ActivityService, CategoryService, EntryService, StatsService, DataService, BallService };
-export type { Activity, ActivityStat, ActivityTotal, BallPosition, Category, DayBucket, Entry, EntryFilter, EntryList, StreakInfo, TimerState };
+export {
+  TimerService,
+  ActivityService,
+  CategoryService,
+  EntryService,
+  StatsService,
+  DataService,
+  BallService,
+};
+export type {
+  Activity,
+  ActivityStat,
+  ActivityTotal,
+  BallPosition,
+  Category,
+  DayBucket,
+  Entry,
+  EntryFilter,
+  EntryList,
+  StreakInfo,
+  TimerState,
+};

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref } from "vue";
 import {
   ActivityService,
   EntryService,
@@ -8,14 +8,13 @@ import {
   type EntryFilter,
 } from "../lib/api";
 import { useToast } from "../composables/useToast";
-import { useTimer } from "../composables/useTimer";
+import { useVersionedLoad } from "../composables/useVersionedLoad";
 import { formatWhen, fromLocalInput, toLocalInput } from "../lib/format";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
 import DurationText from "../components/DurationText.vue";
 import EmptyState from "../components/EmptyState.vue";
 import Modal from "../components/Modal.vue";
 
-const { version } = useTimer();
 const { success, error } = useToast();
 
 const activities = ref<Activity[]>([]);
@@ -23,13 +22,13 @@ const entries = ref<Entry[]>([]);
 const total = ref(0);
 const page = ref(1);
 const pageSize = 20;
-const loading = ref(true);
 
 const filterActivityId = ref<number | "">("");
 const filterFrom = ref("");
 const filterTo = ref("");
 
 const pages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)));
+const activityById = computed(() => new Map(activities.value.map((a) => [a.id, a])));
 
 const editorOpen = ref(false);
 const editing = ref<Entry | null>(null);
@@ -46,8 +45,9 @@ async function loadActivities() {
   }
 }
 
-async function load() {
-  loading.value = true;
+// Entry list reloads on mount and on timer start/stop; the sequence guard
+// drops stale responses when filters/pages are flipped quickly.
+const { loading, reload } = useVersionedLoad(async (isCurrent) => {
   try {
     const filter: EntryFilter = {
       activityId: filterActivityId.value === "" ? null : filterActivityId.value,
@@ -57,19 +57,30 @@ async function load() {
       pageSize,
     };
     const list = await EntryService.List(filter);
+    if (!isCurrent()) return;
     entries.value = list?.items ?? [];
     total.value = list?.total ?? 0;
   } catch (err) {
     console.error(err);
     error("加载记录失败");
-  } finally {
-    loading.value = false;
   }
-}
+});
 
 function applyFilter() {
   page.value = 1;
-  void load();
+  void reload();
+}
+
+function prevPage() {
+  if (page.value <= 1) return;
+  page.value--;
+  void reload();
+}
+
+function nextPage() {
+  if (page.value >= pages.value) return;
+  page.value++;
+  void reload();
 }
 
 function openCreate() {
@@ -125,7 +136,7 @@ async function save() {
       success("已添加记录");
     }
     editorOpen.value = false;
-    await load();
+    void reload();
   } catch (err) {
     formError.value = String((err as Error).message ?? err).replace(/^\w+:\s*/, "");
   }
@@ -137,18 +148,14 @@ async function doDelete() {
     await EntryService.Delete(deleteTarget.value.id);
     success("记录已删除");
     deleteTarget.value = null;
-    await load();
+    void reload();
   } catch (err) {
     error(String((err as Error).message ?? err).replace(/^\w+:\s*/, ""));
   }
 }
 
-const activityName = (id: number) => activities.value.find((a) => a.id === id);
-
-watch(version, () => void load());
 onMounted(() => {
   void loadActivities();
-  void load();
 });
 </script>
 
@@ -169,18 +176,31 @@ onMounted(() => {
     </div>
 
     <div v-if="loading" class="py-10 text-center text-sm text-muted">加载中…</div>
-    <EmptyState v-else-if="entries.length === 0" title="没有符合条件的记录" hint="试试调整筛选条件，或用「补录」添加过去的记录。" />
+    <EmptyState
+      v-else-if="entries.length === 0"
+      title="没有符合条件的记录"
+      hint="试试调整筛选条件，或用「补录」添加过去的记录。"
+    />
 
     <div v-else class="mc-card divide-y divide-hairline overflow-hidden">
-      <div v-for="e in entries" :key="e.id" class="flex items-center gap-4 px-5 py-3.5 hover:bg-surface-card/50">
+      <div
+        v-for="e in entries"
+        :key="e.id"
+        class="flex items-center gap-4 px-5 py-3.5 hover:bg-surface-card/50"
+      >
         <span class="h-8 w-1 rounded-full" :style="{ backgroundColor: e.activityColor }" />
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2">
             <span class="text-sm font-medium text-ink">{{ e.activityName }}</span>
             <span
               class="rounded-full px-1.5 py-0.5 text-[10px]"
-              :class="e.source === 'timer' ? 'bg-primary/10 text-primary' : 'bg-accent-teal/15 text-accent-teal'"
-            >{{ e.source === "timer" ? "计时" : "补录" }}</span>
+              :class="
+                e.source === 'timer'
+                  ? 'bg-primary/10 text-primary'
+                  : 'bg-accent-teal/15 text-accent-teal'
+              "
+              >{{ e.source === "timer" ? "计时" : "补录" }}</span
+            >
           </div>
           <div class="mt-0.5 truncate text-xs text-muted">
             {{ formatWhen(e.startedAt) }} → {{ formatWhen(e.endedAt) }}
@@ -189,19 +209,38 @@ onMounted(() => {
         </div>
         <DurationText :seconds="e.durationSeconds" class="text-sm font-medium text-body" />
         <div class="flex gap-1">
-          <button class="cursor-pointer rounded-md px-2 py-1 text-xs text-muted hover:bg-surface-card hover:text-body" @click="openEdit(e)">编辑</button>
-          <button class="cursor-pointer rounded-md px-2 py-1 text-xs text-muted hover:bg-error/10 hover:text-error" @click="deleteTarget = e">删除</button>
+          <button
+            class="cursor-pointer rounded-md px-2 py-1 text-xs text-muted hover:bg-surface-card hover:text-body"
+            @click="openEdit(e)"
+          >
+            编辑
+          </button>
+          <button
+            class="cursor-pointer rounded-md px-2 py-1 text-xs text-muted hover:bg-error/10 hover:text-error"
+            @click="deleteTarget = e"
+          >
+            删除
+          </button>
         </div>
       </div>
     </div>
 
-    <div v-if="total > pageSize" class="mt-4 flex items-center justify-center gap-3 text-sm text-muted">
-      <button class="mc-btn-ghost py-1.5" :disabled="page <= 1" @click="page--; load()">上一页</button>
+    <div
+      v-if="total > pageSize"
+      class="mt-4 flex items-center justify-center gap-3 text-sm text-muted"
+    >
+      <button class="mc-btn-ghost py-1.5" :disabled="page <= 1" @click="prevPage">上一页</button>
       <span>{{ page }} / {{ pages }}（共 {{ total }} 条）</span>
-      <button class="mc-btn-ghost py-1.5" :disabled="page >= pages" @click="page++; load()">下一页</button>
+      <button class="mc-btn-ghost py-1.5" :disabled="page >= pages" @click="nextPage">
+        下一页
+      </button>
     </div>
 
-    <Modal :open="editorOpen" :title="editing ? '编辑记录' : '补录记录'" @close="editorOpen = false">
+    <Modal
+      :open="editorOpen"
+      :title="editing ? '编辑记录' : '补录记录'"
+      @close="editorOpen = false"
+    >
       <div class="flex flex-col gap-4">
         <div>
           <label class="mc-label">活动</label>
@@ -221,7 +260,13 @@ onMounted(() => {
         </div>
         <div>
           <label class="mc-label">备注（可选）</label>
-          <input v-model="form.note" type="text" maxlength="500" placeholder="这次专注做了什么？" class="mc-input" />
+          <input
+            v-model="form.note"
+            type="text"
+            maxlength="500"
+            placeholder="这次专注做了什么？"
+            class="mc-input"
+          />
         </div>
         <p v-if="formError" class="text-xs text-error">{{ formError }}</p>
       </div>
@@ -236,7 +281,11 @@ onMounted(() => {
       title="删除记录"
       :danger="true"
       confirm-text="删除"
-      :message="deleteTarget ? `确定删除 ${activityName(deleteTarget.activityId)?.name ?? ''} 的这条记录吗？该操作不可撤销。` : ''"
+      :message="
+        deleteTarget
+          ? `确定删除 ${activityById.get(deleteTarget.activityId)?.name ?? ''} 的这条记录吗？该操作不可撤销。`
+          : ''
+      "
       @confirm="doDelete"
       @cancel="deleteTarget = null"
     />

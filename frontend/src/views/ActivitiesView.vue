@@ -14,7 +14,13 @@ const showArchived = ref(false);
 
 const editorOpen = ref(false);
 const editing = ref<Activity | null>(null);
-const form = ref({ name: "", color: "#cc785c", icon: "", categoryId: null as number | null, dailyGoalMinutes: 0 });
+const form = ref({
+  name: "",
+  color: "#cc785c",
+  icon: "",
+  categoryId: null as number | null,
+  dailyGoalMinutes: 0,
+});
 const formError = ref("");
 
 const deleteTarget = ref<Activity | null>(null);
@@ -42,7 +48,17 @@ const activityCountByCategory = computed(() => {
   return counts;
 });
 
-const palette = ["#cc785c", "#a9583e", "#5db8a6", "#e8a55a", "#5db872", "#d4a017", "#c64545", "#141413", "#6c6a64"];
+const palette = [
+  "#cc785c",
+  "#a9583e",
+  "#5db8a6",
+  "#e8a55a",
+  "#5db872",
+  "#d4a017",
+  "#c64545",
+  "#141413",
+  "#6c6a64",
+];
 
 async function load() {
   loading.value = true;
@@ -199,7 +215,9 @@ onMounted(load);
     </div>
 
     <div v-if="loading" class="py-10 text-center text-sm text-muted">加载中…</div>
-    <div v-else-if="visible.length === 0" class="mc-card p-10 text-center text-sm text-muted">暂无活动</div>
+    <div v-else-if="visible.length === 0" class="mc-card p-10 text-center text-sm text-muted">
+      暂无活动
+    </div>
 
     <div v-else class="flex flex-col gap-3">
       <div
@@ -217,10 +235,17 @@ onMounted(load);
               v-if="a.categoryId != null && categoryById.get(a.categoryId)"
               class="inline-flex items-center gap-1.5 rounded-full bg-surface-card px-2 py-0.5 text-[11px] text-body"
             >
-              <span class="h-1.5 w-1.5 rounded-full" :style="{ backgroundColor: categoryById.get(a.categoryId)!.color }" />
+              <span
+                class="h-1.5 w-1.5 rounded-full"
+                :style="{ backgroundColor: categoryById.get(a.categoryId)!.color }"
+              />
               {{ categoryById.get(a.categoryId)!.name }}
             </span>
-            <span v-if="a.archived" class="rounded-full bg-surface-card px-2 py-0.5 text-[10px] text-muted">已归档</span>
+            <span
+              v-if="a.archived"
+              class="rounded-full bg-surface-card px-2 py-0.5 text-[10px] text-muted"
+              >已归档</span
+            >
           </div>
           <p class="mt-0.5 text-xs text-muted">
             {{ a.dailyGoalMinutes > 0 ? `每日目标 ${a.dailyGoalMinutes} 分钟` : "未设目标" }}
@@ -231,17 +256,32 @@ onMounted(load);
           <button class="mc-btn-ghost px-3 py-1.5 text-xs" @click="toggleArchive(a)">
             {{ !a.archived ? "恢复" : "归档" }}
           </button>
-          <button class="mc-btn-ghost px-3 py-1.5 text-xs text-error hover:bg-error/10" @click="deleteTarget = a">删除</button>
+          <button
+            class="mc-btn-ghost px-3 py-1.5 text-xs text-error hover:bg-error/10"
+            @click="deleteTarget = a"
+          >
+            删除
+          </button>
         </div>
       </div>
     </div>
 
     <!-- 活动编辑 -->
-    <Modal :open="editorOpen" :title="editing ? '编辑活动' : '新建活动'" @close="editorOpen = false">
+    <Modal
+      :open="editorOpen"
+      :title="editing ? '编辑活动' : '新建活动'"
+      @close="editorOpen = false"
+    >
       <div class="flex flex-col gap-4">
         <div>
           <label class="mc-label">名称</label>
-          <input v-model="form.name" type="text" maxlength="50" placeholder="例如：阅读、健身…" class="mc-input" />
+          <input
+            v-model="form.name"
+            type="text"
+            maxlength="50"
+            placeholder="例如：阅读、健身…"
+            class="mc-input"
+          />
         </div>
         <div>
           <label class="mc-label">类别（可选）</label>
@@ -269,11 +309,23 @@ onMounted(load);
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="mc-label">图标（可选，一个 emoji）</label>
-            <input v-model="form.icon" type="text" maxlength="4" placeholder="📚" class="mc-input" />
+            <input
+              v-model="form.icon"
+              type="text"
+              maxlength="4"
+              placeholder="📚"
+              class="mc-input"
+            />
           </div>
           <div>
             <label class="mc-label">每日目标（分钟，0 为不设）</label>
-            <input v-model.number="form.dailyGoalMinutes" type="number" min="0" max="1440" class="mc-input" />
+            <input
+              v-model.number="form.dailyGoalMinutes"
+              type="number"
+              min="0"
+              max="1440"
+              class="mc-input"
+            />
           </div>
         </div>
         <p v-if="formError" class="text-xs text-error">{{ formError }}</p>
@@ -285,11 +337,18 @@ onMounted(load);
     </Modal>
 
     <!-- 类别管理（列表 / 表单双视图，避免弹窗叠弹窗） -->
-    <Modal :open="catManagerOpen" :title="catView === 'list' ? '类别管理' : catEditing ? '编辑类别' : '新建类别'" wide @close="catManagerOpen = false">
+    <Modal
+      :open="catManagerOpen"
+      :title="catView === 'list' ? '类别管理' : catEditing ? '编辑类别' : '新建类别'"
+      wide
+      @close="catManagerOpen = false"
+    >
       <div v-if="catView === 'list'">
         <div class="mb-3 flex items-center justify-between">
           <p class="text-xs text-muted">按类别整理活动，打卡页会按类别分组展示。</p>
-          <button class="mc-btn-primary px-3 py-1.5 text-xs" @click="openCatCreate">＋ 新建类别</button>
+          <button class="mc-btn-primary px-3 py-1.5 text-xs" @click="openCatCreate">
+            ＋ 新建类别
+          </button>
         </div>
 
         <div v-if="categories.length === 0" class="rounded-xl bg-surface-soft p-8 text-center">
@@ -303,7 +362,10 @@ onMounted(load);
             :key="c.id"
             class="flex items-center gap-3 rounded-xl border border-hairline p-3"
           >
-            <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-base" :style="{ backgroundColor: `${c.color}1a` }">
+            <span
+              class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-base"
+              :style="{ backgroundColor: `${c.color}1a` }"
+            >
               {{ c.icon || "●" }}
             </span>
             <div class="min-w-0 flex-1">
@@ -312,7 +374,12 @@ onMounted(load);
             </div>
             <div class="flex gap-1">
               <button class="mc-btn-ghost px-3 py-1.5 text-xs" @click="openCatEdit(c)">编辑</button>
-              <button class="mc-btn-ghost px-3 py-1.5 text-xs text-error hover:bg-error/10" @click="deleteCatTarget = c">删除</button>
+              <button
+                class="mc-btn-ghost px-3 py-1.5 text-xs text-error hover:bg-error/10"
+                @click="deleteCatTarget = c"
+              >
+                删除
+              </button>
             </div>
           </div>
         </div>
@@ -321,11 +388,23 @@ onMounted(load);
       <div v-else class="flex flex-col gap-4">
         <div>
           <label class="mc-label">名称</label>
-          <input v-model="catForm.name" type="text" maxlength="20" placeholder="例如：学习、健康、娱乐…" class="mc-input" />
+          <input
+            v-model="catForm.name"
+            type="text"
+            maxlength="20"
+            placeholder="例如：学习、健康、娱乐…"
+            class="mc-input"
+          />
         </div>
         <div>
           <label class="mc-label">图标（可选，一个 emoji）</label>
-          <input v-model="catForm.icon" type="text" maxlength="4" placeholder="📚" class="mc-input" />
+          <input
+            v-model="catForm.icon"
+            type="text"
+            maxlength="4"
+            placeholder="📚"
+            class="mc-input"
+          />
         </div>
         <div>
           <label class="mc-label">颜色</label>
@@ -359,7 +438,11 @@ onMounted(load);
       title="删除活动"
       :danger="true"
       confirm-text="全部删除"
-      :message="deleteTarget ? `删除「${deleteTarget.name}」会同时删除它的所有计时记录，且无法恢复。确定继续吗？` : ''"
+      :message="
+        deleteTarget
+          ? `删除「${deleteTarget.name}」会同时删除它的所有计时记录，且无法恢复。确定继续吗？`
+          : ''
+      "
       @confirm="doDelete"
       @cancel="deleteTarget = null"
     />
@@ -371,7 +454,7 @@ onMounted(load);
       confirm-text="删除"
       :message="
         deleteCatTarget
-          ? activityCountByCategory.get(deleteCatTarget.id) ?? 0 > 0
+          ? (activityCountByCategory.get(deleteCatTarget.id) ?? 0 > 0)
             ? `删除类别「${deleteCatTarget.name}」后，该类别下的 ${activityCountByCategory.get(deleteCatTarget.id)} 个活动将变为未分类，所有记录都会保留。确定继续吗？`
             : `删除类别「${deleteCatTarget.name}」？该类别下没有活动，所有记录不受影响。`
           : ''

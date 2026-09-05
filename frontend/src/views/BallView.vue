@@ -6,7 +6,7 @@ import { formatClock } from "../lib/format";
 import { BallService } from "../lib/api";
 
 // Must match the window size in main.go — the ball is never resized at runtime.
-const BALL_W = 280;
+const BALL_W = 240;
 const EDGE_MARGIN = 16;
 
 const { state, refresh } = useTimer();
@@ -16,14 +16,18 @@ const running = computed(() => state.running);
 // Transient hint shown when the context-menu action cannot be performed.
 const toast = ref("");
 let toastTimer: number | undefined;
+let offToast: (() => void) | undefined;
 function showToast(message: string) {
   toast.value = message;
   if (toastTimer !== undefined) window.clearTimeout(toastTimer);
   toastTimer = window.setTimeout(() => (toast.value = ""), 1800);
 }
 
-// Poll the authoritative state once per second so the ball always mirrors the
-// main window (start/stop from anywhere is reflected within ~1s).
+// Poll as a low-frequency safety net so the ball converges even if an event
+// is lost; normal sync is event-driven (`useTimer` listens for the app-wide
+// timer:started / timer:stopped events emitted by the Go side, and the local
+// 1s ticker keeps the clock smooth while running).
+const FALLBACK_POLL_MS = 30_000;
 let pollTimer: number | undefined;
 
 function startPolling() {
@@ -34,7 +38,7 @@ function startPolling() {
     } catch (err) {
       console.error("ball refresh failed", err);
     }
-  }, 1000);
+  }, FALLBACK_POLL_MS);
 }
 
 function stopPolling() {
@@ -90,27 +94,16 @@ function onContextMenu(e: MouseEvent) {
   e.preventDefault();
 }
 
-function makePageTransparent() {
-  document.documentElement.style.background = "transparent";
-  document.body.style.background = "transparent";
-}
-
-function restorePageBackground() {
-  document.documentElement.style.background = "";
-  document.body.style.background = "";
-}
-
 onMounted(() => {
-  makePageTransparent();
   void placeBall();
   startPolling();
-  Events.On("ball:toast", (ev) => showToast(String(ev.data ?? "")));
+  offToast = Events.On("ball:toast", (ev) => showToast(String(ev.data ?? "")));
 });
 
 onBeforeUnmount(() => {
   stopPolling();
+  offToast?.();
   if (toastTimer !== undefined) window.clearTimeout(toastTimer);
-  restorePageBackground();
 });
 </script>
 
@@ -118,15 +111,20 @@ onBeforeUnmount(() => {
   <div class="relative h-full w-full select-none" @contextmenu="onContextMenu">
     <!-- The pill: whole surface is a drag handle + native context-menu binding. -->
     <div
-      class="absolute inset-x-1.5 top-1.5 bottom-1.5 flex cursor-grab items-center gap-3 rounded-full bg-surface-dark px-4 text-white shadow-md"
+      class="absolute inset-x-1 top-1 bottom-1 flex cursor-grab items-center gap-2.5 rounded-full bg-surface-dark px-3.5 text-white"
       style="
         --wails-draggable: drag;
         --custom-contextmenu: ball-menu;
         user-select: none;
         -webkit-user-select: none;
       "
+      role="button"
+      tabindex="0"
+      aria-label="显示/隐藏主窗口"
       title="左键双击：显示/隐藏主窗口 · 右键：开始/停止计时"
       @dblclick="toggleMainWindow"
+      @keydown.enter.prevent="toggleMainWindow"
+      @keydown.space.prevent="toggleMainWindow"
     >
       <span class="relative flex h-3 w-3 shrink-0">
         <span
@@ -145,7 +143,7 @@ onBeforeUnmount(() => {
       </span>
 
       <span
-        class="font-mono text-xl leading-none font-semibold tabular-nums"
+        class="font-mono text-xl leading-none font-semibold tabular-nums shrink-0"
         :class="running ? 'text-white' : 'text-white/45'"
       >
         {{ formatClock(running ? state.elapsed : state.lastElapsed) }}
@@ -161,7 +159,7 @@ onBeforeUnmount(() => {
     >
       <div
         v-if="toast"
-        class="pointer-events-none absolute inset-x-1.5 top-1.5 bottom-1.5 z-10 flex items-center justify-center rounded-full bg-dark-elevated/95 px-4 text-xs text-white shadow-lg"
+        class="pointer-events-none absolute inset-x-1 top-1 bottom-1 z-10 flex items-center justify-center rounded-full bg-dark-elevated/95 px-3.5 text-xs text-white"
       >
         {{ toast }}
       </div>

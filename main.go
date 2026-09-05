@@ -74,8 +74,8 @@ func main() {
 	ballWindow := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:             "ball",
 		Title:            "Miku Chrono 悬浮球",
-		Width:            280,
-		Height:           72,
+		Width:            240,
+		Height:           56,
 		DisableResize:    true,
 		Frameless:        true,
 		AlwaysOnTop:      true,
@@ -87,8 +87,9 @@ func main() {
 		URL:              "/#/ball",
 		StartState:       application.WindowStateNormal,
 		Windows: application.WindowsWindow{
-			HiddenOnTaskbar:         true,
-			WindowDidMoveDebounceMS: 200,
+			HiddenOnTaskbar:                   true,
+			DisableFramelessWindowDecorations: true,
+			WindowDidMoveDebounceMS:           200,
 		},
 	})
 

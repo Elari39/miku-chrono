@@ -155,17 +155,23 @@ onMounted(() => {
     <div class="mc-card mb-4 p-5">
       <h3 class="mb-1 text-sm font-semibold text-ink">数据位置</h3>
       <p class="mb-3 text-xs text-muted">SQLite 数据库与备份默认保存在：</p>
-      <code class="mb-3 block rounded-lg bg-surface-card px-3 py-2 text-xs break-all text-body">{{ dataDir || "…" }}</code>
+      <code class="mb-3 block rounded-lg bg-surface-card px-3 py-2 text-xs break-all text-body">{{
+        dataDir || "…"
+      }}</code>
       <button class="mc-btn-ghost" @click="openDir">打开数据文件夹</button>
     </div>
 
     <div class="rounded-xl border border-error/30 bg-error/5 p-5">
       <h3 class="mb-1 text-sm font-semibold text-error">危险区域</h3>
-      <p class="mb-4 text-xs text-muted">清空所有计时记录（活动本身会保留）。此操作无法撤销，建议先导出备份。</p>
+      <p class="mb-4 text-xs text-muted">
+        清空所有计时记录（活动本身会保留）。此操作无法撤销，建议先导出备份。
+      </p>
       <button class="mc-btn-danger" @click="confirmClear1 = true">清空所有记录</button>
     </div>
 
-    <p class="mt-8 text-center text-xs text-muted">Miku Chrono v0.1.0 · Wails v3 · {{ new Date().getFullYear() }}</p>
+    <p class="mt-8 text-center text-xs text-muted">
+      Miku Chrono v0.1.0 · Wails v3 · {{ new Date().getFullYear() }}
+    </p>
 
     <ConfirmDialog
       :open="confirmClear1"
@@ -173,7 +179,10 @@ onMounted(() => {
       :danger="true"
       confirm-text="下一步"
       message="即将删除全部计时记录（包括计时与补录）。活动、名称与目标会保留。确定要继续吗？"
-      @confirm="confirmClear1 = false; confirmClear2 = true"
+      @confirm="
+        confirmClear1 = false;
+        confirmClear2 = true;
+      "
       @cancel="confirmClear1 = false"
     />
     <ConfirmDialog

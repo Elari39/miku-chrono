@@ -1,22 +1,30 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, ref } from "vue";
 import { CategoryService, StatsService, type ActivityStat, type Category } from "../lib/api";
 import { useTimer } from "../composables/useTimer";
+import { useVersionedLoad } from "../composables/useVersionedLoad";
 import { useToast } from "../composables/useToast";
-import { formatDuration } from "../lib/format";
+import { formatDuration, todayStr } from "../lib/format";
 import ActivityCard from "../components/ActivityCard.vue";
 import RunningTimerCard from "../components/RunningTimerCard.vue";
 import EmptyState from "../components/EmptyState.vue";
 
-const { state, running, version, start, stop } = useTimer();
+const { state, running, start, stop } = useTimer();
 const { success, error } = useToast();
 
 const stats = ref<ActivityStat[]>([]);
 const categories = ref<Category[]>([]);
-const loading = ref(true);
 
 const activeStats = computed(() => stats.value.filter((s) => !s.activity.archived));
 const totalToday = computed(() => stats.value.reduce((sum, s) => sum + s.todaySeconds, 0));
+// Live total: includes the running session's elapsed time (only when it
+// started today — a session started before midnight counts towards yesterday).
+const displayTotal = computed(() => {
+  if (state.running && state.startedAt.startsWith(todayStr())) {
+    return totalToday.value + state.elapsed;
+  }
+  return totalToday.value;
+});
 
 // Group active activities by category (未分类 last). Only groups that
 // actually contain activities render.
@@ -40,22 +48,20 @@ const groups = computed(() => {
 
 // Headers only add meaning once there is more than one group or at least
 // one real category exists; a single flat list renders exactly like before.
-const showGroupHeaders = computed(
-  () => categories.value.length > 0 || groups.value.length > 1,
-);
+const showGroupHeaders = computed(() => categories.value.length > 0 || groups.value.length > 1);
 
-async function load() {
+// Aggregate refs reload on mount and whenever the timer starts/stops.
+const { loading, reload } = useVersionedLoad(async (isCurrent) => {
   try {
     const [overview, cats] = await Promise.all([StatsService.Overview(), CategoryService.List()]);
+    if (!isCurrent()) return;
     stats.value = overview ?? [];
     categories.value = cats ?? [];
   } catch (err) {
     console.error(err);
     error("加载活动列表失败");
-  } finally {
-    loading.value = false;
   }
-}
+});
 
 async function onStart(id: number) {
   try {
@@ -71,15 +77,11 @@ async function onStop() {
     if (entry) {
       success(`已记录 ${formatDuration(entry.durationSeconds)} · ${entry.activityName}`);
     }
-    await load();
+    void reload();
   } catch (err) {
     error(String((err as Error).message ?? err).replace(/^\w+:\s*/, ""));
   }
 }
-
-// Refresh aggregates whenever a timer starts/stops elsewhere (e.g. nav pill).
-watch(version, () => void load());
-onMounted(load);
 </script>
 
 <template>
@@ -88,7 +90,7 @@ onMounted(load);
       <div>
         <h1 class="font-display text-2xl font-semibold text-ink">打卡</h1>
         <p class="mt-1 text-sm text-muted">
-          今日已专注 <span class="font-medium text-body">{{ formatDuration(totalToday) }}</span>
+          今日已专注 <span class="font-medium text-body">{{ formatDuration(displayTotal) }}</span>
         </p>
       </div>
     </div>
@@ -112,7 +114,9 @@ onMounted(load);
             :style="{ backgroundColor: g.category.color }"
           />
           <span v-if="g.category?.icon" class="text-base leading-none">{{ g.category.icon }}</span>
-          <h2 class="text-sm font-semibold text-ink">{{ g.category ? g.category.name : "未分类" }}</h2>
+          <h2 class="text-sm font-semibold text-ink">
+            {{ g.category ? g.category.name : "未分类" }}
+          </h2>
           <span class="text-xs text-muted-soft">{{ g.stats.length }} 项</span>
         </div>
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">

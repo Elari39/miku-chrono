@@ -18,5 +18,7 @@ const text = computed(() =>
 </script>
 
 <template>
-  <span :class="props.mono || props.mode === 'clock' ? 'font-mono tabular-nums' : ''">{{ text }}</span>
+  <span :class="props.mono || props.mode === 'clock' ? 'font-mono tabular-nums' : ''">{{
+    text
+  }}</span>
 </template>

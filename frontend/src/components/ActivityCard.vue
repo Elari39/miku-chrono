@@ -34,7 +34,8 @@ const progress = computed(() => {
           <span
             v-if="currentStreak > 0"
             class="rounded-full bg-accent-amber/15 px-2 py-0.5 text-xs font-medium text-accent-amber"
-          >🔥 连续 {{ currentStreak }} 天</span>
+            >🔥 连续 {{ currentStreak }} 天</span
+          >
         </div>
         <p class="mt-1 text-xs text-muted">
           今日
@@ -42,7 +43,11 @@ const progress = computed(() => {
           <template v-if="goalSeconds > 0"> / 目标 {{ activity.dailyGoalMinutes }} 分钟</template>
         </p>
       </div>
-      <button v-if="isRunning" class="mc-btn-ghost border-primary/40 text-primary" @click="emit('stop')">
+      <button
+        v-if="isRunning"
+        class="mc-btn-ghost border-primary/40 text-primary"
+        @click="emit('stop')"
+      >
         <span class="mr-1 inline-block h-2 w-2 rounded-full bg-primary" />停止
       </button>
       <button v-else class="mc-btn-primary" @click="emit('start')">开始</button>
@@ -51,7 +56,10 @@ const progress = computed(() => {
       <div
         class="h-full rounded-full transition-all duration-500"
         :class="progress >= 100 ? 'bg-success' : ''"
-        :style="{ width: progress + '%', backgroundColor: progress >= 100 ? undefined : activity.color }"
+        :style="{
+          width: progress + '%',
+          backgroundColor: progress >= 100 ? undefined : activity.color,
+        }"
       />
     </div>
     <div v-if="goalSeconds > 0" class="mt-1 text-right text-[11px] text-muted">{{ progress }}%</div>

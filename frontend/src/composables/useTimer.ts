@@ -1,24 +1,12 @@
 import { computed, reactive, ref } from "vue";
 import { Events } from "@wailsio/runtime";
 import { TimerService, type Entry, type TimerState } from "../lib/api";
+import { applyTimerState, createTimerStateView, type TimerStateView } from "../lib/timerState";
 
 // Singleton reactive timer state shared by every view. The backend owns the
 // authoritative started_at; the frontend ticks locally every second so the
 // clock stays smooth without hammering the API.
-const state = reactive({
-  loaded: false,
-  running: false,
-  activityId: 0,
-  activityName: "",
-  activityColor: "#cc785c",
-  startedAt: "",
-  elapsed: 0,
-  // Last (paused) timer chain, shown by the ball while idle.
-  lastActivityId: 0,
-  lastActivityName: "",
-  lastActivityColor: "#cc785c",
-  lastElapsed: 0,
-});
+const state = reactive<TimerStateView>(createTimerStateView());
 
 /** Bumped on every start/stop so views know when to refresh aggregates. */
 const version = ref(0);
@@ -40,17 +28,7 @@ function stopTicker() {
 }
 
 function apply(st: TimerState) {
-  state.loaded = true;
-  state.running = st.running;
-  state.activityId = st.activityId;
-  state.activityName = st.activityName;
-  state.activityColor = st.activityColor || "#cc785c";
-  state.startedAt = st.startedAt;
-  state.elapsed = st.elapsedSeconds;
-  state.lastActivityId = st.lastActivityId;
-  state.lastActivityName = st.lastActivityName;
-  state.lastActivityColor = st.lastActivityColor || "#cc785c";
-  state.lastElapsed = st.lastElapsedSeconds;
+  applyTimerState(state, st);
   if (st.running) startTicker();
   else stopTicker();
 }
