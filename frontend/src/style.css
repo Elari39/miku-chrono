@@ -1,0 +1,87 @@
+@import "tailwindcss";
+
+/*
+ * Miku Chrono design tokens — mapped from DESIGN.md.
+ * CSS-first Tailwind 4 configuration; no tailwind.config needed.
+ */
+@theme {
+  --color-canvas: #faf9f5;
+  --color-ink: #141413;
+  --color-body: #3d3d3a;
+  --color-muted: #6c6a64;
+  --color-surface-card: #efe9de;
+  --color-hairline: #e6dfd8;
+  --color-surface-dark: #181715;
+  --color-dark-elevated: #252320;
+  --color-primary: #cc785c;
+  --color-primary-active: #a9583e;
+  --color-accent-teal: #5db8a6;
+  --color-accent-amber: #e8a55a;
+  --color-success: #5db872;
+  --color-warning: #d4a017;
+  --color-error: #c64545;
+
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "EB Garamond", Georgia, "Times New Roman", serif;
+  --font-mono: "SF Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
+}
+
+/* Map Tailwind's default alias onto our token names for convenience. */
+@theme inline {
+  --color-primary-hover: var(--color-primary-active);
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  @apply bg-canvas font-sans text-body antialiased;
+  overflow: hidden; /* the app shell handles its own scrolling */
+}
+
+/* Hairline scrollbars, Windows friendly. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-hairline) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--color-hairline);
+  border-radius: 4px;
+}
+
+/* Shared small utilities used across views. */
+@layer components {
+  .mc-card {
+    @apply rounded-xl border border-hairline bg-white/70 shadow-sm;
+  }
+
+  /* One shared button base applied to every variant selector. */
+  .mc-btn,
+  .mc-btn-primary,
+  .mc-btn-ghost,
+  .mc-btn-danger {
+    @apply inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors select-none disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .mc-btn-primary {
+    @apply bg-primary text-white hover:bg-primary-active;
+  }
+  .mc-btn-ghost {
+    @apply border border-hairline bg-white text-body hover:bg-surface-card;
+  }
+  .mc-btn-danger {
+    @apply bg-error text-white hover:opacity-90;
+  }
+  .mc-input {
+    @apply w-full rounded-lg border border-hairline bg-white px-3 py-2 text-sm text-ink outline-none placeholder:text-muted/60 focus:border-primary focus:ring-2 focus:ring-primary/20;
+  }
+  .mc-label {
+    @apply mb-1 block text-xs font-medium text-muted;
+  }
+}

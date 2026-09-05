@@ -1,0 +1,139 @@
+# Miku Chrono 🎵⏱️
+
+> 多活动打卡计时桌面应用 —— 一只常驻桌面的「初音」计时小助手
+
+![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go&logoColor=white)
+![Wails](https://img.shields.io/badge/Wails3-v3.0.0--beta.16-DF4A32?logo=wails&logoColor=white)
+![Vue](https://img.shields.io/badge/Vue-3-42B883?logo=vue.js&logoColor=white)
+![SQLite](https://img.shields.io/badge/SQLite-Pure_Go-003B57?logo=sqlite&logoColor=white)
+![Platform](https://img.shields.io/badge/Platform-Windows-0078D6?logo=windows&logoColor=white)
+
+---
+
+## 📖 命名由来
+
+「Miku」取自 **初音未来（初音ミク / Hatsune Miku）** —— 世界的第一个虚拟歌姬，"初音"意为"最初的音符"，象征每一段时光的开始；「Chrono」源自希腊语 **χρόνος（时间）**，意为"时间的记录者"。
+
+合在一起，Miku Chrono 寓意 **「以初音相伴，记录每一刻时光」**：一只可爱的小悬浮球常驻桌面，安静地陪伴你打卡、计时、回顾每一天的投入。
+
+## ✨ 功能特性
+
+### ⏱️ 打卡计时
+
+- **互斥单一计时器**：同一时间只计一个活动，切换活动时自动结算并记录上一段
+- **计时记忆** 🆕：停止计时后，悬浮球置灰显示上次的活动与累计时长（如 `阅读 45:32`）；点击「开始计时」**延续上次的活动与累计时长**继续计时
+- **分段记账，统计准确**：每次停止只把本次续计的时段写入记录，累计总长仅作展示与续计，统计与打卡数据不会被重复放大
+- 误触保护：不足 1 秒的会话自动丢弃，不产生垃圾记录
+
+### 🏓 悬浮球（桌面常驻）
+
+- 透明无边框、始终置顶、可自由拖拽，**位置自动记忆**
+- 实时显示当前活动、彩色状态点与计时时钟
+- 左键**双击**：显示/隐藏主窗口
+- 右键菜单：
+  - `开始计时 / 停止计时`（随计时状态动态切换）
+  - `显示/隐藏主窗口`
+  - `退出悬浮球`
+- 计时状态与主窗口**秒级同步**（任意一端开始/停止，另一端即刻刷新）
+
+### 🗂️ 活动与分类
+
+- 活动卡片：名称、颜色、图标、每日目标分钟数
+- 编辑 / 归档 / 删除，支持自定义分类归纳
+
+### 📊 记录与统计
+
+- 记录列表：分页、按活动/日期筛选，支持手动补记与编辑
+- 统计页：今日与累计时长、**连续打卡天数（streak）**、年度热力图、日堆积柱状图
+
+### 🧩 系统托盘
+
+- 常驻通知区，保证应用永远可寻回
+- 动态菜单：计时中 `停止计时 · MM:SS`，空闲 `开始计时 · 上次时长`
+- 左键单击恢复主窗口
+
+### 💾 数据与设置
+
+- 数据存于本地 SQLite（纯 Go 驱动，无 CGO 依赖）
+- JSON / CSV（Excel 友好）一键导出备份
+- 关闭主窗口默认隐藏到后台（可改为直接退出）
+
+## 🛠️ 技术栈
+
+| 层 | 技术 |
+| --- | --- |
+| 桌面框架 | [Wails v3](https://v3.wails.io/)（v3.0.0-beta.16） |
+| 后端语言 | Go 1.25 |
+| 数据库 | SQLite（[modernc.org/sqlite](https://modernc.org/sqlite)，纯 Go 实现） |
+| 前端框架 | Vue 3 + TypeScript + Vite + Tailwind CSS 4 + vue-router |
+| 绑定层 | Wails 自动生成 TS 绑定（`frontend/bindings`） |
+
+## 🚀 快速开始
+
+### 环境要求
+
+- Go 1.25+
+- Node.js（含 npm）
+- [wails3 CLI](https://v3.wails.io/docs/next/gettingstarted/installation/)（版本需与 `go.mod` 匹配）
+
+### 开发模式（热重载）
+
+```bash
+wails3 dev
+```
+
+### 构建
+
+```bash
+wails3 build
+# 产物：bin/miku-chrono.exe（Windows）
+```
+
+> 构建流水线会自动生成前端产物（`frontend/dist`）与 TS 绑定，无需手动干预。
+
+### 测试
+
+```bash
+go vet ./...
+go test ./...
+```
+
+## 📁 项目结构
+
+```text
+Miku_Chrono/
+├── main.go                 # 入口：主窗口 / 悬浮球 / 右键菜单 / 关闭行为装配
+├── tray.go                 # 系统托盘 + 菜单状态同步泵（1s 轮询）
+├── DESIGN.md               # 设计系统规范（暖奶油画布 + 珊瑚强调色）
+├── internal/
+│   ├── models/             # Go ↔ TypeScript 共享数据结构
+│   ├── store/              # SQLite 数据层：迁移 / 种子数据 / 全部 SQL
+│   └── services/           # Wails 绑定服务：校验 / 统计 / 导出 / 悬浮球控制
+└── frontend/
+    ├── src/                # Vue 3 应用
+    │   ├── views/          # 打卡 / 统计 / 记录 / 活动 / 设置 / 悬浮球
+    │   ├── components/     # 通用组件（倒计时卡、图表、弹窗等）
+    │   ├── composables/    # useTimer（全局计时状态）、useToast
+    │   └── lib/            # API 汇总与格式化工具
+    └── bindings/           # 由 wails3 自动生成的绑定（请勿手改）
+```
+
+## 🎨 设计语言
+
+暖奶油色画布（`#faf9f5`）× 珊瑚强调色（`#cc785c`）× 深色信息面板的三元色板，配衬线展示字体与克制的阴影 —— 完整 token 与组件规范见 [DESIGN.md](DESIGN.md)。
+
+## 💾 数据存储位置
+
+数据库文件位于各系统的用户配置目录：
+
+| 系统 | 路径 |
+| --- | --- |
+| Windows | `%APPDATA%\Miku_Chrono\mikuchrono.db` |
+| macOS | `~/Library/Application Support/Miku_Chrono/mikuchrono.db` |
+| Linux | `~/.config/Miku_Chrono/mikuchrono.db` |
+
+备份只需导出或直接复制该文件。
+
+## 📄 许可
+
+本项目目前**未附加开源许可证**，依据版权法默认保留所有权利。如需以开源协议（如 MIT / MPL-2.0）发布，请补充 `LICENSE` 文件。
