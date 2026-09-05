@@ -3,8 +3,6 @@
 import { formatDay, formatDuration } from "./format";
 
 export const BAR_CHART_LAYOUT = {
-  COL: 26,
-  BAR_W: 14,
   H: 200,
   /** Left/right padding keep centered axis labels inside the viewBox —
    *  a single-day chart used to clip the leading "9" of "9月5日". */
@@ -13,10 +11,21 @@ export const BAR_CHART_LAYOUT = {
   /** Top padding leaves room for the always-visible value labels. */
   PAD_T: 20,
   PAD_B: 22,
+  /** Columns fill the measured container width but never squeeze below
+   *  this — a 31-day month keeps ~22px columns and scrolls horizontally
+   *  instead of turning into unreadable slivers. */
+  MIN_COL: 22,
+  /** Bar width as a fraction of the column (26→14 in the old fixed grid),
+   *  capped so the 7-bar week doesn't turn into blobs. */
+  BAR_RATIO: 0.56,
+  MAX_BAR_W: 40,
 } as const;
 
 /** Bars at or below this count get a formatted total printed above them. */
 export const VALUE_LABEL_MAX_BARS = 16;
+
+/** Drawing widths below this fall back to it (0px during mount, jsdom). */
+const MIN_DRAW_W = 240;
 
 export interface BarSegment {
   secs: number;
@@ -90,18 +99,30 @@ export function buildBars(
   buckets: BucketInput[],
   colors: Record<string, string>,
   names: Record<string, string>,
-  opts: { labelMode?: "day" | "month" } = {},
+  opts: { labelMode?: "day" | "month"; width: number },
 ) {
-  const { COL, BAR_W, H, PAD_L, PAD_R, PAD_T, PAD_B } = BAR_CHART_LAYOUT;
+  const { H, PAD_L, PAD_R, PAD_T, PAD_B, MIN_COL, MAX_BAR_W, BAR_RATIO } = BAR_CHART_LAYOUT;
   const labelMode = opts.labelMode ?? "day";
-  const width = Math.max(120, PAD_L + buckets.length * COL + PAD_R);
+  const drawW = Math.max(opts.width, MIN_DRAW_W);
+
+  if (buckets.length === 0) {
+    return { bars: [], width: drawW, maxTotal: 1, labelEvery: 1, colW: 0, barW: 0 };
+  }
+
+  // Columns stretch to fill the measured width; only a clamp at MIN_COL can
+  // push the content wider than the container (→ horizontal scroll there).
+  // Round so float noise (537/7·7) never leaks into the SVG width attribute.
+  const n = buckets.length;
+  const colW = Math.max(MIN_COL, (drawW - PAD_L - PAD_R) / n);
+  const barW = Math.min(MAX_BAR_W, colW * BAR_RATIO);
+  const width = Math.max(drawW, Math.round(PAD_L + colW * n + PAD_R));
   const maxTotal = Math.max(1, ...buckets.map((b) => b.total));
   const usable = H - PAD_T - PAD_B;
-  const labelEvery = labelStep(buckets.length);
+  const labelEvery = labelStep(n);
 
   const bars: Bar[] = buckets.map((b, i) => {
-    const colX = PAD_L + i * COL;
-    const x = colX + (COL - BAR_W) / 2;
+    const colX = PAD_L + i * colW;
+    const x = colX + (colW - barW) / 2;
     let y = H - PAD_B;
     const segments: BarSegment[] = Object.entries(b.byActivity ?? {})
       .map(([activityId, secs]) => ({ activityId, secs: secs ?? 0 }))
@@ -142,5 +163,5 @@ export function buildBars(
     };
   });
 
-  return { bars, width, maxTotal, labelEvery };
+  return { bars, width, maxTotal, labelEvery, colW, barW };
 }

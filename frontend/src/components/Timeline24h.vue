@@ -1,20 +1,24 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import { useElementWidth } from "../composables/useElementWidth";
 import { formatDuration, formatDurationLong } from "../lib/format";
 import type { TimelineSegment } from "../lib/statsPeriods";
 
 const props = defineProps<{ segments: TimelineSegment[] }>();
 
-// Track geometry: 24h mapped onto a 744px strip inside a 776px viewBox.
+// Track geometry: 24h mapped onto a strip that fills the measured card
+// width — rendered 1:1 (no viewBox scaling), so labels stay crisp whether
+// the stats grid is one column or the chart card spans two columns.
 const TRACK_X = 8;
-const TRACK_W = 744;
-const WIDTH = 776;
 const TRACK_Y = 10;
 const TRACK_H = 20;
 
+const { width } = useElementWidth("trackEl");
+const trackW = computed(() => width.value - TRACK_X * 2);
+
 const hovered = ref<number | null>(null);
 
-const xAt = (min: number) => TRACK_X + (min / 1440) * TRACK_W;
+const xAt = (min: number) => TRACK_X + (min / 1440) * trackW.value;
 
 const hourLabels = Array.from({ length: 9 }, (_, i) => i * 3); // 0点..24点
 
@@ -35,31 +39,27 @@ const hm = (min: number) => {
   return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 };
 
-const hoveredSeg = computed(() => (hovered.value === null ? null : props.segments[hovered.value]));
+const hoveredSeg = computed(() =>
+  hovered.value === null ? null : (props.segments[hovered.value] ?? null),
+);
 
 const tipStyle = computed(() => {
   const seg = hoveredSeg.value;
   if (!seg) return {};
   const center = xAt((seg.startMin + seg.endMin) / 2);
-  const left = Math.min(Math.max(center, 80), WIDTH - 80);
+  const left = Math.min(Math.max(center, 80), Math.max(width.value - 80, 80));
   return { left: `${left}px`, top: "42px", transform: "translate(-50%, 0)" };
 });
 </script>
 
 <template>
-  <div class="relative" @pointerleave="hovered = null">
-    <svg
-      :width="WIDTH"
-      :height="52"
-      :viewBox="`0 0 ${WIDTH} 52`"
-      class="block w-full"
-      preserveAspectRatio="xMidYMid meet"
-    >
+  <div ref="trackEl" class="relative" @pointerleave="hovered = null">
+    <svg :width="width" :height="52" :viewBox="`0 0 ${width} 52`" class="block">
       <!-- track = unrecorded time -->
       <rect
         :x="TRACK_X"
         :y="TRACK_Y"
-        :width="TRACK_W"
+        :width="trackW"
         :height="TRACK_H"
         rx="10"
         class="fill-black/5"
