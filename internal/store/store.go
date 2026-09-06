@@ -183,6 +183,25 @@ func (s *Store) seed() error {
 // Close closes the underlying database.
 func (s *Store) Close() error { return s.db.Close() }
 
+// GoalNotifiedKeyPrefix prefixes the daily-goal notification dedupe keys
+// ("<prefix><date>_<activityID>") that the services.GoalNotifier stores in
+// the meta table, one per activity per day.
+const GoalNotifiedKeyPrefix = "goal_notified_"
+
+// DeleteStaleGoalNotifyKeys removes daily-goal notification dedupe keys
+// written before today, keeping today's keys, so the meta table does not
+// grow without bound. today is a local "YYYY-MM-DD" date.
+func (s *Store) DeleteStaleGoalNotifyKeys(today string) error {
+	prefix := GoalNotifiedKeyPrefix + today
+	if _, err := s.db.Exec(
+		`DELETE FROM meta WHERE key LIKE ? AND substr(key, 1, ?) <> ?`,
+		GoalNotifiedKeyPrefix+"%", len(prefix), prefix,
+	); err != nil {
+		return fmt.Errorf("delete stale goal notify keys: %w", err)
+	}
+	return nil
+}
+
 // GetSetting reads a key/value setting from the meta table. found is false
 // when the key has never been written.
 func (s *Store) GetSetting(key string) (value string, found bool, err error) {

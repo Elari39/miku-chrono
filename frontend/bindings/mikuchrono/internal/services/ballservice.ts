@@ -18,6 +18,14 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as models$0 from "../models/models.js";
 
 /**
+ * GetAutostart reports whether the app is registered to launch at boot
+ * (Windows Run key; false and nil on unsupported platforms).
+ */
+export function GetAutostart(): $CancellablePromise<boolean> {
+    return $Call.ByID(1326740694);
+}
+
+/**
  * GetBallPosition returns the persisted ball position; Set is false when no
  * position has ever been saved.
  */
@@ -32,6 +40,22 @@ export function GetBallPosition(): $CancellablePromise<models$0.BallPosition> {
  */
 export function GetCloseAction(): $CancellablePromise<string> {
     return $Call.ByID(2470442449);
+}
+
+/**
+ * GetGoalNotifyEnabled reports whether the daily-goal notification is on.
+ * A missing setting means enabled (the default).
+ */
+export function GetGoalNotifyEnabled(): $CancellablePromise<boolean> {
+    return $Call.ByID(1239426584);
+}
+
+/**
+ * GetMainWindowBounds returns the persisted main-window geometry. Set is
+ * false when the window has never been moved or resized.
+ */
+export function GetMainWindowBounds(): $CancellablePromise<models$0.WindowBounds> {
+    return $Call.ByID(1838355557);
 }
 
 /**
@@ -72,10 +96,32 @@ export function SaveBallPosition(x: number, y: number): $CancellablePromise<void
 }
 
 /**
+ * SaveMainWindowBounds persists the main-window geometry across restarts.
+ */
+export function SaveMainWindowBounds(x: number, y: number, width: number, height: number): $CancellablePromise<void> {
+    return $Call.ByID(1767140842, x, y, width, height);
+}
+
+/**
+ * SetAutostart registers or removes the boot launch entry. Enabling writes
+ * the --minimized flag too, so a boot launch starts silently.
+ */
+export function SetAutostart(enabled: boolean): $CancellablePromise<void> {
+    return $Call.ByID(3432322730, enabled);
+}
+
+/**
  * SetCloseAction stores the close-button behaviour ("hide" or "quit").
  */
 export function SetCloseAction(action: string): $CancellablePromise<void> {
     return $Call.ByID(3458176909, action);
+}
+
+/**
+ * SetGoalNotifyEnabled toggles the daily-goal notification.
+ */
+export function SetGoalNotifyEnabled(enabled: boolean): $CancellablePromise<void> {
+    return $Call.ByID(3920603236, enabled);
 }
 
 /**
@@ -86,8 +132,18 @@ export function ShowBall(): $CancellablePromise<void> {
 }
 
 /**
+ * StartMainWindowPersist throttled-saves the main-window bounds whenever it
+ * moves or resizes. Safe to call before Run; repeated calls register the
+ * handlers only once.
+ */
+export function StartMainWindowPersist(): $CancellablePromise<void> {
+    return $Call.ByID(2442231616);
+}
+
+/**
  * StartPositionPersist throttled-saves the ball position whenever the ball
- * window moves (drag or programmatic restore). Safe to call before Run.
+ * window moves (drag or programmatic restore). Safe to call before Run;
+ * repeated calls register the handler only once.
  */
 export function StartPositionPersist(): $CancellablePromise<void> {
     return $Call.ByID(191844862);

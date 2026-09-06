@@ -163,3 +163,15 @@ export interface TimerState {
     "lastActivityColor": string;
     "lastElapsedSeconds": number;
 }
+
+/**
+ * WindowBounds is the persisted main-window geometry. Set is false when the
+ * window has never been moved or resized (it then uses its creation defaults).
+ */
+export interface WindowBounds {
+    "x": number;
+    "y": number;
+    "width": number;
+    "height": number;
+    "set": boolean;
+}

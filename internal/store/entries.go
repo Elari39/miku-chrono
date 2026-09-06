@@ -79,8 +79,9 @@ func (s *Store) DeleteEntry(id int64) error {
 	return nil
 }
 
-// ClearEntries deletes every entry, clears any running timer state and
-// resets the paused timer chain. Activities are kept.
+// ClearEntries deletes every entry, clears any running timer state, resets
+// the paused timer chain and the daily-goal notification dedupe (so a goal
+// reached again after clearing notifies again today). Activities are kept.
 func (s *Store) ClearEntries() error {
 	if _, err := s.db.Exec(`DELETE FROM entries`); err != nil {
 		return fmt.Errorf("clear entries: %w", err)
@@ -90,6 +91,9 @@ func (s *Store) ClearEntries() error {
 	}
 	if _, err := s.db.Exec(`DELETE FROM meta WHERE key IN (?, ?)`, keyTimerActivity, keyTimerSeconds); err != nil {
 		return fmt.Errorf("clear timer chain: %w", err)
+	}
+	if _, err := s.db.Exec(`DELETE FROM meta WHERE key LIKE ?`, GoalNotifiedKeyPrefix+"%"); err != nil {
+		return fmt.Errorf("clear goal notify keys: %w", err)
 	}
 	return nil
 }

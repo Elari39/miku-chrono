@@ -146,3 +146,13 @@ type BallPosition struct {
 	Y   int  `json:"y"`
 	Set bool `json:"set"`
 }
+
+// WindowBounds is the persisted main-window geometry. Set is false when the
+// window has never been moved or resized (it then uses its creation defaults).
+type WindowBounds struct {
+	X      int  `json:"x"`
+	Y      int  `json:"y"`
+	Width  int  `json:"width"`
+	Height int  `json:"height"`
+	Set    bool `json:"set"`
+}

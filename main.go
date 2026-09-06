@@ -3,6 +3,8 @@ package main
 import (
 	"embed"
 	"log"
+	"os"
+	"slices"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
@@ -19,12 +21,23 @@ import (
 var assets embed.FS
 
 func main() {
+	// Boot autostart (registry) launches with --minimized: the main window is
+	// created hidden so only the floating ball and tray appear; a manual
+	// launch without the flag shows the window normally.
+	startHidden := slices.Contains(os.Args[1:], "--minimized")
+
 	// Open (and migrate/seed) the SQLite database under the user config dir.
 	st, err := store.Open(mustDefaultDBPath())
 	if err != nil {
 		log.Fatalf("打开数据库失败: %v", err)
 	}
 	defer func() { _ = st.Close() }()
+
+	// Daily-goal notifications: one-minute background check, stopped when the
+	// app exits (the process is about to terminate anyway).
+	goalNotifier := services.NewGoalNotifier(st)
+	goalNotifier.Start()
+	defer goalNotifier.Stop()
 
 	// Build the services the frontend binds to.
 	categoryService := &services.CategoryService{Store: st}
@@ -50,22 +63,43 @@ func main() {
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
 		},
+		// A second launch (e.g. boot autostart racing a manual start) resignals
+		// the running instance instead of creating a second tray + timer. The
+		// callback runs on a background goroutine, so UI calls go through
+		// InvokeSync.
+		SingleInstance: &application.SingleInstanceOptions{
+			UniqueID: "mikuchrono",
+			OnSecondInstanceLaunch: func(application.SecondInstanceData) {
+				application.InvokeSync(func() { showMainWindow(ballService) })
+			},
+		},
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
 		},
 	})
 
-	mainWindow := app.Window.NewWithOptions(application.WebviewWindowOptions{
+	// Restore the main window's saved geometry when one exists; the position
+	// is clamped to the visible screen by GetMainWindowBounds.
+	mainWindowOptions := application.WebviewWindowOptions{
 		Name:      "main",
 		Title:     "Miku Chrono",
 		Width:     1080,
 		Height:    720,
 		MinWidth:  920,
 		MinHeight: 640,
+		Hidden:    startHidden,
 		URL:       "/",
 		// Cream canvas from DESIGN.md so there is no white flash at startup.
 		BackgroundColour: application.NewRGB(250, 249, 245),
-	})
+	}
+	if bounds, err := ballService.GetMainWindowBounds(); err == nil && bounds.Set {
+		// WindowXY is required: the InitialPosition zero value is WindowCentered,
+		// which makes Wails ignore the restored X/Y and center the window instead.
+		mainWindowOptions.InitialPosition = application.WindowXY
+		mainWindowOptions.X, mainWindowOptions.Y = bounds.X, bounds.Y
+		mainWindowOptions.Width, mainWindowOptions.Height = bounds.Width, bounds.Height
+	}
+	mainWindow := app.Window.NewWithOptions(mainWindowOptions)
 
 	// The floating ball: a small transparent frameless window that always
 	// stays on top. Its size is fixed at creation — resizing a
@@ -99,6 +133,7 @@ func main() {
 	ballService.BallWindow = ballWindow
 	ballService.Timer = timerService
 	ballService.StartPositionPersist()
+	ballService.StartMainWindowPersist()
 	// Broadcast timer state changes from the shared success paths so every
 	// window (ball, tray, other views) refreshes right after start/stop/clear.
 	broadcast := func(event string) { app.Event.Emit(event) }

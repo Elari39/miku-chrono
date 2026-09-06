@@ -35,6 +35,16 @@ const (
 	keyBallY       = "ball_y"
 	keyCloseAction = "close_action"
 
+	// keyGoalNotify gates the daily-goal notification. A missing value means
+	// enabled: the notifier defaults to on so the feature works out of the box.
+	keyGoalNotify = "goal_notify_enabled"
+
+	// Main-window geometry keys, written throttled on move/resize.
+	keyWinX = "win_x"
+	keyWinY = "win_y"
+	keyWinW = "win_w"
+	keyWinH = "win_h"
+
 	// positionPersistInterval throttles ball-position writes during drags.
 	positionPersistInterval = time.Second
 )
@@ -50,9 +60,18 @@ type BallService struct {
 	BallWindow *application.WebviewWindow
 	Timer      *TimerService
 
-	mu        sync.Mutex
-	quitting  bool
-	lastSaved time.Time
+	mu       sync.Mutex
+	quitting bool
+
+	// Independent throttles: the ball and the main window must not suppress
+	// each other's saves (they used to share one lastSaved timestamp).
+	ballPersist persistThrottle
+	winPersist  persistThrottle
+
+	// Registration guards: the bound Start* methods are callable from the
+	// frontend, and a repeated call must not register the handlers twice.
+	positionPersistOnce sync.Once
+	windowPersistOnce   sync.Once
 }
 
 // --- bound methods (called from the frontend) ---
@@ -154,6 +173,91 @@ func (s *BallService) SetCloseAction(action string) error {
 	return s.Store.SetSetting(keyCloseAction, action)
 }
 
+// GetAutostart reports whether the app is registered to launch at boot
+// (Windows Run key; false and nil on unsupported platforms).
+func (s *BallService) GetAutostart() (bool, error) {
+	return autostartEnabled()
+}
+
+// SetAutostart registers or removes the boot launch entry. Enabling writes
+// the --minimized flag too, so a boot launch starts silently.
+func (s *BallService) SetAutostart(enabled bool) error {
+	return setAutostart(enabled)
+}
+
+// GetGoalNotifyEnabled reports whether the daily-goal notification is on.
+// A missing setting means enabled (the default).
+func (s *BallService) GetGoalNotifyEnabled() (bool, error) {
+	v, found, err := s.Store.GetSetting(keyGoalNotify)
+	if err != nil {
+		return false, err
+	}
+	if !found {
+		return true, nil
+	}
+	return v == "1", nil
+}
+
+// SetGoalNotifyEnabled toggles the daily-goal notification.
+func (s *BallService) SetGoalNotifyEnabled(enabled bool) error {
+	v := "0"
+	if enabled {
+		v = "1"
+	}
+	return s.Store.SetSetting(keyGoalNotify, v)
+}
+
+// GetMainWindowBounds returns the persisted main-window geometry. Set is
+// false when the window has never been moved or resized.
+func (s *BallService) GetMainWindowBounds() (models.WindowBounds, error) {
+	var b models.WindowBounds
+	x, _, err := s.Store.GetSetting(keyWinX)
+	if err != nil {
+		return b, err
+	}
+	y, _, err := s.Store.GetSetting(keyWinY)
+	if err != nil {
+		return b, err
+	}
+	w, _, err := s.Store.GetSetting(keyWinW)
+	if err != nil {
+		return b, err
+	}
+	h, _, err := s.Store.GetSetting(keyWinH)
+	if err != nil {
+		return b, err
+	}
+	xi, errX := strconv.Atoi(x)
+	yi, errY := strconv.Atoi(y)
+	wi, errW := strconv.Atoi(w)
+	hi, errH := strconv.Atoi(h)
+	if len(x) == 0 || len(y) == 0 || len(w) == 0 || len(h) == 0 ||
+		errX != nil || errY != nil || errW != nil || errH != nil {
+		// Missing or corrupt: treat as never saved.
+		return b, nil
+	}
+	b.X, b.Y, b.Width, b.Height, b.Set = xi, yi, wi, hi, true
+	// Clamp to the visible screen here so a position saved while a monitor
+	// was connected cannot put the window out of reach after it is gone.
+	b.X, b.Y = clampWindowBounds(b.X, b.Y, b.Width, b.Height)
+	return b, nil
+}
+
+// SaveMainWindowBounds persists the main-window geometry across restarts.
+func (s *BallService) SaveMainWindowBounds(x, y, width, height int) error {
+	for _, kv := range [][2]string{
+		{keyWinX, strconv.Itoa(x)},
+		{keyWinY, strconv.Itoa(y)},
+		{keyWinW, strconv.Itoa(width)},
+		{keyWinH, strconv.Itoa(height)},
+	} {
+		if err := s.Store.SetSetting(kv[0], kv[1]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // --- internal helpers (menu callbacks / window hooks) ---
 
 // ToggleTimerFromMenu stops the running timer, or resumes the last one when
@@ -198,29 +302,99 @@ func (s *BallService) QuitApp() {
 	}
 }
 
+// persistThrottle coalesces rapid move/resize events into bounded saves.
+// The first event after an idle interval saves immediately; events arriving
+// during the interval schedule exactly one trailing save that reads the
+// window geometry when it fires — so the final position of a drag is always
+// persisted instead of being silently dropped (a leading-edge-only throttle
+// loses the last update whenever it lands inside the interval).
+type persistThrottle struct {
+	mu       sync.Mutex
+	last     time.Time
+	trailing *time.Timer
+}
+
+// trigger runs save at most once per interval, plus one trailing save after
+// a burst of calls so the latest geometry always lands on disk.
+func (t *persistThrottle) trigger(interval time.Duration, save func()) {
+	t.mu.Lock()
+	if t.trailing != nil {
+		// The scheduled trailing save reads the geometry at its fire time and
+		// therefore already covers this event; nothing to do.
+		t.mu.Unlock()
+		return
+	}
+	now := time.Now()
+	if now.Sub(t.last) >= interval {
+		t.last = now
+		t.mu.Unlock()
+		save()
+		return
+	}
+	t.trailing = time.AfterFunc(interval-now.Sub(t.last), func() {
+		t.mu.Lock()
+		t.trailing = nil
+		t.last = time.Now()
+		t.mu.Unlock()
+		save()
+	})
+	t.mu.Unlock()
+}
+
 // StartPositionPersist throttled-saves the ball position whenever the ball
-// window moves (drag or programmatic restore). Safe to call before Run.
+// window moves (drag or programmatic restore). Safe to call before Run;
+// repeated calls register the handler only once.
 func (s *BallService) StartPositionPersist() {
 	if s.BallWindow == nil {
 		return
 	}
-	s.BallWindow.OnWindowEvent(events.Common.WindowDidMove, func(*application.WindowEvent) {
-		s.persistPositionSoon()
+	s.positionPersistOnce.Do(func() {
+		s.BallWindow.OnWindowEvent(events.Common.WindowDidMove, func(*application.WindowEvent) {
+			s.persistPositionSoon()
+		})
+	})
+}
+
+// StartMainWindowPersist throttled-saves the main-window bounds whenever it
+// moves or resizes. Safe to call before Run; repeated calls register the
+// handlers only once.
+func (s *BallService) StartMainWindowPersist() {
+	if s.MainWindow == nil {
+		return
+	}
+	s.windowPersistOnce.Do(func() {
+		s.MainWindow.OnWindowEvent(events.Common.WindowDidMove, func(*application.WindowEvent) {
+			s.persistMainWindowSoon()
+		})
+		s.MainWindow.OnWindowEvent(events.Common.WindowDidResize, func(*application.WindowEvent) {
+			s.persistMainWindowSoon()
+		})
+	})
+}
+
+func (s *BallService) persistMainWindowSoon() {
+	if s.MainWindow == nil {
+		return
+	}
+	s.winPersist.trigger(positionPersistInterval, func() {
+		if s.MainWindow == nil {
+			return
+		}
+		x, y := s.MainWindow.Position()
+		w, h := s.MainWindow.Size()
+		_ = s.SaveMainWindowBounds(x, y, w, h)
 	})
 }
 
 func (s *BallService) persistPositionSoon() {
-	s.mu.Lock()
-	now := time.Now()
-	if now.Sub(s.lastSaved) < positionPersistInterval {
-		s.mu.Unlock()
-		return
-	}
-	s.lastSaved = now
-	s.mu.Unlock()
 	if s.BallWindow == nil {
 		return
 	}
-	x, y := s.BallWindow.Position()
-	_ = s.SaveBallPosition(x, y)
+	s.ballPersist.trigger(positionPersistInterval, func() {
+		if s.BallWindow == nil {
+			return
+		}
+		x, y := s.BallWindow.Position()
+		_ = s.SaveBallPosition(x, y)
+	})
 }

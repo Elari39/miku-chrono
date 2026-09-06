@@ -14,6 +14,10 @@ const confirmClear2 = ref(false);
 const ballVisible = ref(true);
 const closeAction = ref<"hide" | "quit">("hide");
 
+// Startup & reminders section.
+const autostart = ref(false);
+const goalNotify = ref(true);
+
 async function loadDataDir() {
   try {
     dataDir.value = (await DataService.DataDir()) ?? "";
@@ -92,9 +96,39 @@ async function setCloseAction(action: "hide" | "quit") {
   }
 }
 
+async function loadStartupState() {
+  try {
+    autostart.value = await BallService.GetAutostart();
+    goalNotify.value = await BallService.GetGoalNotifyEnabled();
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+async function toggleAutostart() {
+  try {
+    await BallService.SetAutostart(!autostart.value);
+    autostart.value = !autostart.value;
+    success(autostart.value ? "已开启开机自启动" : "已关闭开机自启动");
+  } catch (err) {
+    error(String((err as Error).message ?? err));
+  }
+}
+
+async function toggleGoalNotify() {
+  try {
+    await BallService.SetGoalNotifyEnabled(!goalNotify.value);
+    goalNotify.value = !goalNotify.value;
+    success(goalNotify.value ? "已开启每日目标提醒" : "已关闭每日目标提醒");
+  } catch (err) {
+    error(String((err as Error).message ?? err));
+  }
+}
+
 onMounted(() => {
   void loadDataDir();
   void loadBallState();
+  void loadStartupState();
 });
 </script>
 
@@ -141,6 +175,37 @@ onMounted(() => {
         直接退出应用
         <span class="text-xs text-muted">连同悬浮球一起退出</span>
       </label>
+    </div>
+
+    <div class="mc-card mb-4 p-5">
+      <h3 class="mb-1 text-sm font-semibold text-ink">启动与提醒</h3>
+      <p class="mb-4 text-xs text-muted">开机常驻与每日目标通知：让 Miku 安静地等你回来。</p>
+
+      <div class="flex items-center justify-between gap-4">
+        <div>
+          <div class="text-sm text-body">开机时自动启动</div>
+          <div class="text-xs text-muted">
+            启动后以静默方式运行：仅显示悬浮球与系统托盘，点击托盘图标即可打开主窗口。
+          </div>
+        </div>
+        <button class="mc-btn-ghost" @click="toggleAutostart">
+          {{ autostart ? "关闭自启动" : "开启自启动" }}
+        </button>
+      </div>
+
+      <div class="mt-4 mb-3 border-t border-hairline" />
+
+      <div class="flex items-center justify-between gap-4">
+        <div>
+          <div class="text-sm text-body">每日目标达成提醒</div>
+          <div class="text-xs text-muted">
+            活动当天累计达到「每日目标分钟数」时弹出系统通知，每日每活动提醒一次。
+          </div>
+        </div>
+        <button class="mc-btn-ghost" @click="toggleGoalNotify">
+          {{ goalNotify ? "关闭提醒" : "开启提醒" }}
+        </button>
+      </div>
     </div>
 
     <div class="mc-card mb-4 p-5">

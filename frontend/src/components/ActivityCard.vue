@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { Activity } from "../lib/api";
 import DurationText from "./DurationText.vue";
 
@@ -9,9 +9,19 @@ const props = defineProps<{
   currentStreak: number;
   /** Whether this activity's timer is currently running. */
   isRunning: boolean;
+  /** Whether this card's "more actions" menu is open (controlled by the parent). */
+  menuOpen: boolean;
 }>();
 
-const emit = defineEmits<{ start: []; stop: []; edit: []; archive: []; delete: [] }>();
+const emit = defineEmits<{
+  start: [];
+  stop: [];
+  edit: [];
+  archive: [];
+  delete: [];
+  toggle: [];
+  close: [];
+}>();
 
 const goalSeconds = computed(() => props.activity.dailyGoalMinutes * 60);
 const progress = computed(() => {
@@ -20,19 +30,38 @@ const progress = computed(() => {
 });
 
 // ── 操作菜单（编辑 / 归档 / 删除） ───────────────────────
-const menuOpen = ref(false);
+// 打开状态由父级持有（全局单开）；卡片只负责事件转发。
 const menuButton = ref<HTMLElement | null>(null);
 const menuPanel = ref<HTMLElement | null>(null);
 
+// 弹出方向只在菜单打开那一刻计算一次：下方空间不足时向上弹出，
+// 避免靠下的卡片菜单被滚动容器可视区底部裁剪。
+const MENU_HEIGHT = 104;
+const MENU_MARGIN = 8;
+const dropUp = ref(false);
+
+watch(
+  () => props.menuOpen,
+  (open) => {
+    if (!open) return;
+    const button = menuButton.value;
+    if (!button) return;
+    const rect = button.getBoundingClientRect();
+    const scroller = button.closest("main");
+    const limit = scroller ? scroller.getBoundingClientRect().bottom : window.innerHeight;
+    dropUp.value = limit - rect.bottom < MENU_HEIGHT + MENU_MARGIN;
+  },
+);
+
 function onClickOutside(e: MouseEvent) {
-  if (!menuOpen.value) return;
+  if (!props.menuOpen) return;
   const target = e.target as Node;
   if (menuButton.value?.contains(target) || menuPanel.value?.contains(target)) return;
-  menuOpen.value = false;
+  emit("close");
 }
 
 function onKeydown(e: KeyboardEvent) {
-  if (e.key === "Escape") menuOpen.value = false;
+  if (e.key === "Escape" && props.menuOpen) emit("close");
 }
 
 onMounted(() => {
@@ -46,17 +75,20 @@ onBeforeUnmount(() => {
 });
 
 function runAction(action: () => void) {
-  menuOpen.value = false;
+  emit("close");
   action();
 }
 </script>
 
 <template>
   <div
-    class="mc-card relative overflow-hidden p-5 transition-shadow hover:shadow-md"
+    class="mc-card relative p-5 transition-shadow hover:shadow-md"
     :class="isRunning ? 'ring-2 ring-primary/40' : ''"
   >
-    <span class="absolute inset-y-0 left-0 w-1" :style="{ backgroundColor: activity.color }" />
+    <span
+      class="absolute inset-y-0 left-0 w-1 rounded-l-xl"
+      :style="{ backgroundColor: activity.color }"
+    />
     <div class="mb-3 flex items-start justify-between">
       <div>
         <div class="flex items-center gap-2">
@@ -90,14 +122,15 @@ function runAction(action: () => void) {
             class="flex h-8 w-8 items-center justify-center rounded-lg text-lg leading-none text-muted transition-colors hover:bg-surface-card hover:text-body"
             :aria-label="`${activity.name} 的更多操作`"
             :aria-expanded="menuOpen"
-            @click.stop="menuOpen = !menuOpen"
+            @click.stop="emit('toggle')"
           >
             ⋯
           </button>
           <div
             v-if="menuOpen"
             ref="menuPanel"
-            class="absolute right-0 top-full z-10 mt-1 flex w-28 flex-col overflow-hidden rounded-xl border border-hairline bg-surface-card py-1 shadow-lg"
+            class="absolute right-0 z-10 flex w-28 flex-col overflow-hidden rounded-xl border border-hairline bg-surface-card py-1 shadow-lg"
+            :class="dropUp ? 'bottom-full mb-1' : 'top-full mt-1'"
           >
             <button
               class="px-3 py-1.5 text-left text-sm text-body hover:bg-surface-soft"

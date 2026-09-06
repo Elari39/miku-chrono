@@ -32,6 +32,9 @@ const activeStats = computed(() => stats.value.filter((s) => !s.activity.archive
 const archived = computed(() => allActivities.value.filter((a) => a.archived));
 const archivedOpen = ref(false);
 
+// 「⋯」菜单全局单开：同一时刻至多一张活动卡片展开菜单。
+const openMenuId = ref<number | null>(null);
+
 const totalToday = computed(() => stats.value.reduce((sum, s) => sum + s.todaySeconds, 0));
 // Live total: includes the running session's elapsed time (only when it
 // started today — a session started before midnight counts towards yesterday).
@@ -224,6 +227,9 @@ async function doDelete() {
               :today-seconds="s.todaySeconds"
               :current-streak="s.currentStreak"
               :is-running="running && state.activityId === s.activity.id"
+              :menu-open="openMenuId === s.activity.id"
+              @toggle="openMenuId = openMenuId === s.activity.id ? null : s.activity.id"
+              @close="openMenuId = null"
               @start="onStart(s.activity.id)"
               @stop="onStop"
               @edit="openEdit(s.activity)"
