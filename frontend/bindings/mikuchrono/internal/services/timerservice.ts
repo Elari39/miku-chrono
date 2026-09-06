@@ -25,6 +25,7 @@ export function GetState(): $CancellablePromise<models$0.TimerState> {
  * Start begins timing the given activity, closing any running timer first
  * (mutual exclusion). Starting the already-running activity is a no-op;
  * starting an idle activity that matches the paused chain resumes it.
+ * Broadcasts timer:started only when the state actually changed.
  */
 export function Start(activityID: number): $CancellablePromise<models$0.TimerState> {
     return $Call.ByID(56145359, activityID);
@@ -41,7 +42,8 @@ export function StartLast(): $CancellablePromise<models$0.TimerState> {
 
 /**
  * Stop ends the running timer and records the entry. Returns nil when the
- * session was too short to record.
+ * session was too short to record. Broadcasts timer:stopped on success —
+ * including discarded short sessions, since the state still became idle.
  */
 export function Stop(): $CancellablePromise<models$0.Entry | null> {
     return $Call.ByID(909970325);

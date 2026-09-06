@@ -14,6 +14,7 @@ export interface TimerStateView {
   activityColor: string;
   startedAt: string;
   elapsed: number;
+  sessionElapsed: number;
   lastActivityId: number;
   lastActivityName: string;
   lastActivityColor: string;
@@ -30,6 +31,7 @@ export function createTimerStateView(): TimerStateView {
     activityColor: DEFAULT_ACTIVITY_COLOR,
     startedAt: "",
     elapsed: 0,
+    sessionElapsed: 0,
     lastActivityId: 0,
     lastActivityName: "",
     lastActivityColor: DEFAULT_ACTIVITY_COLOR,
@@ -46,8 +48,21 @@ export function applyTimerState(state: TimerStateView, st: TimerState): void {
   state.activityColor = st.activityColor || DEFAULT_ACTIVITY_COLOR;
   state.startedAt = st.startedAt;
   state.elapsed = st.elapsedSeconds;
+  state.sessionElapsed = st.sessionElapsedSeconds;
   state.lastActivityId = st.lastActivityId;
   state.lastActivityName = st.lastActivityName;
   state.lastActivityColor = st.lastActivityColor || DEFAULT_ACTIVITY_COLOR;
   state.lastElapsed = st.lastElapsedSeconds;
+}
+
+/**
+ * Seconds elapsed projected from a state snapshot: the snapshot's value plus
+ * the whole seconds passed since it was taken. Ticks project from the latest
+ * backend snapshot instead of incrementing a counter, so paused schedulers,
+ * system sleep or missed callbacks catch up on the next tick instead of
+ * leaving the display behind (MC-007).
+ */
+export function projectElapsed(baseSeconds: number, snapshotAtMs: number, nowMs: number): number {
+  if (snapshotAtMs <= 0) return baseSeconds;
+  return Math.max(0, baseSeconds + Math.floor((nowMs - snapshotAtMs) / 1000));
 }

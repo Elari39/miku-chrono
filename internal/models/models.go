@@ -49,12 +49,17 @@ type Entry struct {
 // recently used activity plus its accumulated seconds) so the UI can show
 // the previous session and offer to resume it.
 type TimerState struct {
-	Running        bool   `json:"running"`
-	ActivityID     int64  `json:"activityId"`
-	ActivityName   string `json:"activityName"`
-	ActivityColor  string `json:"activityColor"`
-	StartedAt      string `json:"startedAt"`
-	ElapsedSeconds int64  `json:"elapsedSeconds"`
+	Running       bool   `json:"running"`
+	ActivityID    int64  `json:"activityId"`
+	ActivityName  string `json:"activityName"`
+	ActivityColor string `json:"activityColor"`
+	StartedAt     string `json:"startedAt"`
+	// ElapsedSeconds is the chain total: the accumulated base of earlier
+	// sessions plus the current session's elapsed time (display + resume).
+	// SessionElapsedSeconds counts the current running session only (0 while
+	// idle). Both are derived display fields; no database column is needed.
+	ElapsedSeconds        int64 `json:"elapsedSeconds"`
+	SessionElapsedSeconds int64 `json:"sessionElapsedSeconds"`
 
 	LastActivityID     int64  `json:"lastActivityId"`
 	LastActivityName   string `json:"lastActivityName"`
@@ -63,11 +68,16 @@ type TimerState struct {
 }
 
 // EntryFilter narrows the entry list. Dates are local "YYYY-MM-DD" strings;
-// empty strings mean "no bound".
+// empty strings mean "no bound". Overlap switches FromDate/ToDate to
+// time-overlap semantics (any entry whose [started_at, ended_at) intersects
+// the range) instead of the default start-day membership, so cross-midnight
+// entries show up on every day they touch. It only takes effect when both
+// dates are set; nil keeps the default start-day filtering.
 type EntryFilter struct {
 	ActivityID *int64 `json:"activityId"`
 	FromDate   string `json:"fromDate"`
 	ToDate     string `json:"toDate"`
+	Overlap    *bool  `json:"overlap,omitempty"`
 	Page       int    `json:"page"`
 	PageSize   int    `json:"pageSize"`
 }

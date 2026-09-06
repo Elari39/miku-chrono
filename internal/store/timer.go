@@ -101,7 +101,9 @@ func (s *Store) GetTimerState(now time.Time) (models.TimerState, error) {
 		return st, fmt.Errorf("get timer state: %w", err)
 	}
 	if t, err := ParseTime(startedAt); err == nil {
-		st.ElapsedSeconds = base + int64(now.Sub(t).Seconds())
+		session := int64(now.Sub(t).Seconds())
+		st.ElapsedSeconds = base + session
+		st.SessionElapsedSeconds = session
 	}
 	return st, nil
 }
@@ -132,7 +134,8 @@ func (s *Store) idleTimerState() (models.TimerState, error) {
 // running session for the same activity is a no-op (kept as-is). When idle,
 // starting the same activity as the paused chain RESUMES it, carrying the
 // accumulated seconds forward; any other start begins a fresh chain. Returns
-// the fresh state.
+// the fresh state; the current session's elapsed starts at zero plus any
+// resumed base carried in ElapsedSeconds.
 func (s *Store) StartTimer(activityID int64, now time.Time) (models.TimerState, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -151,7 +154,9 @@ func (s *Store) StartTimer(activityID int64, now time.Time) (models.TimerState, 
 			_ = tx.Rollback() // nothing written; read path below rebuilds state
 			return s.GetTimerState(now)
 		}
-		s.closeRunningTx(tx, runActivity, runStarted, now)
+		if _, cerr := s.closeRunningTx(tx, runActivity, runStarted, now); cerr != nil {
+			return models.TimerState{}, fmt.Errorf("start timer: close previous session: %w", cerr)
+		}
 	case isNoRows(err):
 		// Idle: resume the chain when it belongs to the target activity,
 		// otherwise start a fresh chain from zero.
@@ -222,7 +227,10 @@ func (s *Store) StopTimer(now time.Time) (*models.Entry, error) {
 	if err != nil {
 		return nil, fmt.Errorf("stop timer: read state: %w", err)
 	}
-	entry := s.closeRunningTx(tx, runActivity, runStarted, now)
+	entry, cerr := s.closeRunningTx(tx, runActivity, runStarted, now)
+	if cerr != nil {
+		return nil, fmt.Errorf("stop timer: close session: %w", cerr)
+	}
 
 	// Fold the finished segment into the chain. A missing chain (a timer
 	// started before the chain feature existed) starts one from zero.
@@ -248,16 +256,17 @@ func (s *Store) StopTimer(now time.Time) (*models.Entry, error) {
 
 // closeRunningTx finalizes the running session inside tx, inserting an entry
 // when the duration is at least minTimerSeconds. Returns the inserted entry
-// (nil when discarded).
-func (s *Store) closeRunningTx(tx *sql.Tx, activityID int64, startedAt string, now time.Time) *models.Entry {
+// (nil, nil when the session was discarded as too short). Any error must
+// abort the surrounding transaction via the caller so the running state
+// stays intact and the session can be retried.
+func (s *Store) closeRunningTx(tx *sql.Tx, activityID int64, startedAt string, now time.Time) (*models.Entry, error) {
 	start, err := ParseTime(startedAt)
 	if err != nil {
-		// Corrupt timestamp: drop the session rather than persist garbage.
-		return nil
+		return nil, fmt.Errorf("close session: parse started_at: %w", err)
 	}
 	duration := int64(now.Sub(start).Seconds())
 	if duration < minTimerSeconds {
-		return nil
+		return nil, nil
 	}
 	ended := FormatTime(now)
 	res, err := tx.Exec(
@@ -266,7 +275,7 @@ func (s *Store) closeRunningTx(tx *sql.Tx, activityID int64, startedAt string, n
 		activityID, startedAt, ended, duration, "", "timer", ended, ended,
 	)
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("close session: insert entry: %w", err)
 	}
 	id, _ := res.LastInsertId()
 	return &models.Entry{
@@ -276,7 +285,7 @@ func (s *Store) closeRunningTx(tx *sql.Tx, activityID int64, startedAt string, n
 		EndedAt:         ended,
 		DurationSeconds: duration,
 		Source:          "timer",
-	}
+	}, nil
 }
 
 // isNoRows reports whether err is the database/sql empty-result sentinel.

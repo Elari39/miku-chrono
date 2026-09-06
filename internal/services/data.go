@@ -19,6 +19,10 @@ import (
 // DataService handles backup export and destructive data operations.
 type DataService struct {
 	Store *store.Store
+	// Emit, when set (wired in main.go), notifies the app that the timer
+	// state may have changed after a destructive clear so every window
+	// refreshes. Nil in tests.
+	Emit func(event string)
 }
 
 // DataDir returns the directory holding the SQLite database.
@@ -77,7 +81,8 @@ func (s *DataService) ExportJSON() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	list, err := s.Store.ListEntries(models.EntryFilter{Page: 1, PageSize: 1 << 30})
+	// Full export: bypass the 200-per-page cap of ListEntries.
+	entries, err := s.Store.ListAllEntries()
 	if err != nil {
 		return "", err
 	}
@@ -86,7 +91,7 @@ func (s *DataService) ExportJSON() (string, error) {
 		ExportedAt: store.FormatTime(time.Now()),
 		Categories: cats,
 		Activities: acts,
-		Entries:    list.Items,
+		Entries:    entries,
 	}
 	buf, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
@@ -105,14 +110,15 @@ func (s *DataService) ExportCSV() (string, error) {
 	if err != nil || path == "" {
 		return path, err
 	}
-	list, err := s.Store.ListEntries(models.EntryFilter{Page: 1, PageSize: 1 << 30})
+	// Full export: bypass the 200-per-page cap of ListEntries.
+	entries, err := s.Store.ListAllEntries()
 	if err != nil {
 		return "", err
 	}
 	var buf bytes.Buffer
 	buf.WriteString("\xEF\xBB\xBF") // UTF-8 BOM so Excel opens Chinese text correctly
 	buf.WriteString("activity,started_at,ended_at,duration_seconds,note,source\r\n")
-	for _, e := range list.Items {
+	for _, e := range entries {
 		buf.WriteString(csvField(e.ActivityName))
 		buf.WriteByte(',')
 		buf.WriteString(csvField(e.StartedAt))
@@ -141,7 +147,14 @@ func csvField(v string) string {
 }
 
 // ClearEntries deletes every entry and any running timer state. Activities
-// are kept.
+// are kept. A success broadcast lets every window drop its local running
+// state immediately (the cleared timer must not keep ticking in the UI).
 func (s *DataService) ClearEntries() error {
-	return s.Store.ClearEntries()
+	if err := s.Store.ClearEntries(); err != nil {
+		return err
+	}
+	if s.Emit != nil {
+		s.Emit(EventTimerStopped)
+	}
+	return nil
 }

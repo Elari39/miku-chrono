@@ -11,7 +11,6 @@ const navItems = [
   { to: "/", label: "打卡" },
   { to: "/stats", label: "统计" },
   { to: "/records", label: "记录" },
-  { to: "/activities", label: "活动" },
   { to: "/settings", label: "设置" },
 ];
 

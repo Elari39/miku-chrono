@@ -87,12 +87,17 @@ export interface Entry {
 
 /**
  * EntryFilter narrows the entry list. Dates are local "YYYY-MM-DD" strings;
- * empty strings mean "no bound".
+ * empty strings mean "no bound". Overlap switches FromDate/ToDate to
+ * time-overlap semantics (any entry whose [started_at, ended_at) intersects
+ * the range) instead of the default start-day membership, so cross-midnight
+ * entries show up on every day they touch. It only takes effect when both
+ * dates are set; nil keeps the default start-day filtering.
  */
 export interface EntryFilter {
     "activityId": number | null;
     "fromDate": string;
     "toDate": string;
+    "overlap"?: boolean | null;
     "page": number;
     "pageSize": number;
 }
@@ -144,7 +149,15 @@ export interface TimerState {
     "activityName": string;
     "activityColor": string;
     "startedAt": string;
+
+    /**
+     * ElapsedSeconds is the chain total: the accumulated base of earlier
+     * sessions plus the current session's elapsed time (display + resume).
+     * SessionElapsedSeconds counts the current running session only (0 while
+     * idle). Both are derived display fields; no database column is needed.
+     */
     "elapsedSeconds": number;
+    "sessionElapsedSeconds": number;
     "lastActivityId": number;
     "lastActivityName": string;
     "lastActivityColor": string;

@@ -1,22 +1,43 @@
 import { computed, reactive, ref } from "vue";
 import { Events } from "@wailsio/runtime";
 import { TimerService, type Entry, type TimerState } from "../lib/api";
-import { applyTimerState, createTimerStateView, type TimerStateView } from "../lib/timerState";
+import {
+  applyTimerState,
+  createTimerStateView,
+  projectElapsed,
+  type TimerStateView,
+} from "../lib/timerState";
 
 // Singleton reactive timer state shared by every view. The backend owns the
-// authoritative started_at; the frontend ticks locally every second so the
-// clock stays smooth without hammering the API.
+// authoritative started_at; the frontend projects elapsed time from the last
+// backend snapshot every second so the clock stays smooth without hammering
+// the API — and still catches up after paused schedulers or system sleep,
+// where a naive per-tick counter would fall behind.
 const state = reactive<TimerStateView>(createTimerStateView());
 
 /** Bumped on every start/stop so views know when to refresh aggregates. */
 const version = ref(0);
 
+// Elapsed-time snapshot: the authoritative values from the backend plus the
+// local time they were received. Ticks project from this baseline.
+let baseElapsed = 0;
+let baseSession = 0;
+let snapshotAt = 0;
+
 let ticker: number | undefined;
+
+function takeSnapshot(st: TimerState) {
+  baseElapsed = st.elapsedSeconds;
+  baseSession = st.sessionElapsedSeconds;
+  snapshotAt = Date.now();
+}
 
 function startTicker() {
   stopTicker();
   ticker = window.setInterval(() => {
-    state.elapsed++;
+    const now = Date.now();
+    state.elapsed = projectElapsed(baseElapsed, snapshotAt, now);
+    state.sessionElapsed = projectElapsed(baseSession, snapshotAt, now);
   }, 1000);
 }
 
@@ -29,6 +50,7 @@ function stopTicker() {
 
 function apply(st: TimerState) {
   applyTimerState(state, st);
+  takeSnapshot(st);
   if (st.running) startTicker();
   else stopTicker();
 }
@@ -46,14 +68,17 @@ async function refresh(): Promise<void> {
 /** Start timing an activity (mutually exclusive; auto-closes the previous). */
 async function start(activityId: number): Promise<void> {
   apply(await TimerService.Start(activityId));
-  version.value++;
+  // Aggregate refresh is driven by the app-wide timer:started event (the Go
+  // service broadcasts after each successful change) so every window reloads
+  // exactly once per change.
 }
 
 /** Stop the running timer. Returns the recorded entry (null if discarded). */
 async function stop(): Promise<Entry | null> {
   const entry = await TimerService.Stop();
+  // Refresh locally right away so the caller continues from an idle state;
+  // the broadcast event bumps `version` for the aggregate reloads.
   await refresh();
-  version.value++;
   return entry;
 }
 
@@ -67,7 +92,8 @@ export function useTimer() {
 void refresh();
 
 // Refresh when the timer is stopped/started from the ball's context menu or
-// the system tray (the Go side emits these app-wide after each toggle).
+// the system tray (the Go side emits these app-wide after each toggle —
+// including from the main window's own start/stop and a settings-page clear).
 Events.On("timer:stopped", () => {
   void refresh();
   version.value++;
@@ -75,4 +101,11 @@ Events.On("timer:stopped", () => {
 Events.On("timer:started", () => {
   void refresh();
   version.value++;
+});
+
+// Re-calibrate against the backend when the page becomes visible again —
+// schedulers and webview timers may have been paused while hidden/asleep,
+// and the projected clock only converges once a fresh snapshot arrives.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") void refresh();
 });

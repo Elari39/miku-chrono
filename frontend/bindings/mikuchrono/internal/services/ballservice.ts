@@ -103,8 +103,9 @@ export function ToggleMainWindow(): $CancellablePromise<boolean> {
 
 /**
  * ToggleTimerFromMenu stops the running timer, or resumes the last one when
- * idle, from the ball's context menu / system tray. The change is broadcast
- * so every window refreshes; failures surface as a transient toast.
+ * idle, from the ball's context menu / system tray. TimerService broadcasts
+ * timer:started / timer:stopped itself after each successful change, so this
+ * wrapper only surfaces failures as a transient toast.
  */
 export function ToggleTimerFromMenu(): $CancellablePromise<void> {
     return $Call.ByID(2423215939);

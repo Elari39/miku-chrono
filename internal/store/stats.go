@@ -7,24 +7,118 @@ import (
 	"mikuchrono/internal/models"
 )
 
-// TodaySecondsByActivity sums today's recorded seconds per activity.
-func (s *Store) TodaySecondsByActivity(today string) (map[int64]int64, error) {
+// dayPiece is one contiguous piece of an entry's duration lying inside one
+// local day.
+type dayPiece struct {
+	activityID int64
+	date       string // "YYYY-MM-DD" in the entry's own wall-clock offset
+	secs       int64
+}
+
+// splitByLocalDay slices [start, end) into per-local-day pieces. Day
+// boundaries are midnights in the timestamps' own location, which matches
+// the wall-clock dates written into started_at / ended_at. Stored
+// timestamps are whole seconds (RFC3339 rendering drops sub-second parts)
+// and so are the boundaries, hence the integer-second split never loses or
+// gains a second and the pieces sum exactly to end.Sub(start).
+func splitByLocalDay(start, end time.Time) []dayPiece {
+	if !end.After(start) {
+		return nil
+	}
+	var out []dayPiece
+	cur := start
+	for cur.Before(end) {
+		y, m, d := cur.Date()
+		next := time.Date(y, m, d+1, 0, 0, 0, 0, cur.Location())
+		if next.After(end) {
+			next = end
+		}
+		secs := int64(next.Sub(cur).Seconds())
+		if secs > 0 {
+			out = append(out, dayPiece{date: cur.Format("2006-01-02"), secs: secs})
+		}
+		cur = next
+	}
+	return out
+}
+
+// startOfDay returns date's local midnight as an RFC3339 string in the
+// current local offset — the same rendering entries are stored in, so the
+// string comparisons used by the overlap filters below stay in sync with
+// timestamp order.
+func startOfDay(date string) (string, error) {
+	t, err := time.ParseInLocation("2006-01-02", date, time.Local)
+	if err != nil {
+		return "", fmt.Errorf("parse date %q: %w", date, err)
+	}
+	return FormatTime(t), nil
+}
+
+// loadDayPieces queries every entry overlapping the inclusive local date
+// range [fromDate, toDate] (i.e. started_at < the day after toDate and
+// ended_at >= fromDate's midnight) and splits each into per-day pieces.
+// Pieces outside the range are dropped. Time-ordered output keeps a
+// first-seen aggregation stable.
+func (s *Store) loadDayPieces(fromDate, toDate string) ([]dayPiece, error) {
+	fromStart, err := startOfDay(fromDate)
+	if err != nil {
+		return nil, fmt.Errorf("day pieces: %w", err)
+	}
+	next, err := AddDays(toDate, 1)
+	if err != nil {
+		return nil, fmt.Errorf("day pieces: %w", err)
+	}
+	toExcl, err := startOfDay(next)
+	if err != nil {
+		return nil, fmt.Errorf("day pieces: %w", err)
+	}
 	rows, err := s.db.Query(
-		`SELECT activity_id, SUM(duration_seconds) FROM entries
-		 WHERE substr(started_at,1,10) = ? GROUP BY activity_id`, today)
+		`SELECT activity_id, started_at, ended_at FROM entries
+		 WHERE ended_at >= ? AND started_at < ?
+		 ORDER BY started_at, id`, fromStart, toExcl)
+	if err != nil {
+		return nil, fmt.Errorf("day pieces: %w", err)
+	}
+	defer rows.Close()
+	var out []dayPiece
+	for rows.Next() {
+		var act int64
+		var startS, endS string
+		if err := rows.Scan(&act, &startS, &endS); err != nil {
+			return nil, err
+		}
+		start, err := ParseTime(startS)
+		if err != nil {
+			return nil, fmt.Errorf("day pieces: parse started_at: %w", err)
+		}
+		end, err := ParseTime(endS)
+		if err != nil {
+			return nil, fmt.Errorf("day pieces: parse ended_at: %w", err)
+		}
+		for _, p := range splitByLocalDay(start, end) {
+			if p.date >= fromDate && p.date <= toDate {
+				out = append(out, dayPiece{activityID: act, date: p.date, secs: p.secs})
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// TodaySecondsByActivity sums today's recorded seconds per activity. Cross-
+// midnight entries contribute only the part that actually falls on today.
+func (s *Store) TodaySecondsByActivity(today string) (map[int64]int64, error) {
+	pieces, err := s.loadDayPieces(today, today)
 	if err != nil {
 		return nil, fmt.Errorf("today seconds: %w", err)
 	}
-	defer rows.Close()
 	out := map[int64]int64{}
-	for rows.Next() {
-		var id, secs int64
-		if err := rows.Scan(&id, &secs); err != nil {
-			return nil, err
-		}
-		out[id] = secs
+	for _, p := range pieces {
+		out[p.activityID] += p.secs
 	}
-	return out, rows.Err()
+	return out, nil
 }
 
 // TotalSecondsByActivity sums all recorded seconds per activity.
@@ -45,10 +139,11 @@ func (s *Store) TotalSecondsByActivity() (map[int64]int64, error) {
 	return out, rows.Err()
 }
 
-// ActiveDays returns the set of local dates with at least one recorded entry.
-// A nil activityID means "any activity".
+// ActiveDays returns the set of local dates on which at least one record
+// had any duration. A nil activityID means "any activity". Days are taken
+// from the split pieces, so a cross-midnight entry marks both days active.
 func (s *Store) ActiveDays(activityID *int64) (map[string]bool, error) {
-	q := `SELECT DISTINCT substr(started_at,1,10) FROM entries WHERE duration_seconds > 0`
+	q := `SELECT started_at, ended_at FROM entries WHERE duration_seconds > 0`
 	var args []any
 	if activityID != nil {
 		q += ` AND activity_id = ?`
@@ -61,46 +156,44 @@ func (s *Store) ActiveDays(activityID *int64) (map[string]bool, error) {
 	defer rows.Close()
 	out := map[string]bool{}
 	for rows.Next() {
-		var d string
-		if err := rows.Scan(&d); err != nil {
+		var startS, endS string
+		if err := rows.Scan(&startS, &endS); err != nil {
 			return nil, err
 		}
-		out[d] = true
+		start, err := ParseTime(startS)
+		if err != nil {
+			return nil, fmt.Errorf("active days: parse started_at: %w", err)
+		}
+		end, err := ParseTime(endS)
+		if err != nil {
+			return nil, fmt.Errorf("active days: parse ended_at: %w", err)
+		}
+		for _, p := range splitByLocalDay(start, end) {
+			out[p.date] = true
+		}
 	}
 	return out, rows.Err()
 }
 
 // DayBuckets returns per-day per-activity seconds between the two local
-// dates (inclusive), for the stacked bar chart.
+// dates (inclusive), for the stacked bar chart. Cross-midnight entries are
+// split across the days they touch.
 func (s *Store) DayBuckets(fromDate, toDate string) ([]models.DayBucket, error) {
-	rows, err := s.db.Query(
-		`SELECT substr(started_at,1,10), activity_id, SUM(duration_seconds) FROM entries
-		 WHERE substr(started_at,1,10) BETWEEN ? AND ?
-		 GROUP BY substr(started_at,1,10), activity_id ORDER BY substr(started_at,1,10)`,
-		fromDate, toDate)
+	pieces, err := s.loadDayPieces(fromDate, toDate)
 	if err != nil {
 		return nil, fmt.Errorf("day buckets: %w", err)
 	}
-	defer rows.Close()
 	buckets := map[string]*models.DayBucket{}
 	var order []string
-	for rows.Next() {
-		var date string
-		var activityID, secs int64
-		if err := rows.Scan(&date, &activityID, &secs); err != nil {
-			return nil, err
-		}
-		b, ok := buckets[date]
+	for _, p := range pieces {
+		b, ok := buckets[p.date]
 		if !ok {
-			b = &models.DayBucket{Date: date, ByActivity: map[string]int64{}}
-			buckets[date] = b
-			order = append(order, date)
+			b = &models.DayBucket{Date: p.date, ByActivity: map[string]int64{}}
+			buckets[p.date] = b
+			order = append(order, p.date)
 		}
-		b.ByActivity[fmt.Sprint(activityID)] = secs
-		b.Total += secs
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
+		b.ByActivity[fmt.Sprint(p.activityID)] += p.secs
+		b.Total += p.secs
 	}
 	out := make([]models.DayBucket, 0, len(order))
 	for _, d := range order {
@@ -111,36 +204,25 @@ func (s *Store) DayBuckets(fromDate, toDate string) ([]models.DayBucket, error) 
 
 // MonthBuckets returns per-month per-activity seconds for the given local
 // year ("2006" layout), only for months that have data. Used by the yearly
-// view of the statistics page.
+// view of the statistics page. Cross-month entries are split across the
+// months they touch.
 func (s *Store) MonthBuckets(year string) ([]models.MonthBucket, error) {
-	rows, err := s.db.Query(
-		`SELECT substr(started_at,1,7), activity_id, SUM(duration_seconds) FROM entries
-		 WHERE substr(started_at,1,7) LIKE ? || '-%'
-		 GROUP BY substr(started_at,1,7), activity_id ORDER BY substr(started_at,1,7)`,
-		year)
+	pieces, err := s.loadDayPieces(year+"-01-01", year+"-12-31")
 	if err != nil {
 		return nil, fmt.Errorf("month buckets: %w", err)
 	}
-	defer rows.Close()
 	buckets := map[string]*models.MonthBucket{}
 	var order []string
-	for rows.Next() {
-		var month string
-		var activityID, secs int64
-		if err := rows.Scan(&month, &activityID, &secs); err != nil {
-			return nil, err
-		}
+	for _, p := range pieces {
+		month := p.date[:7]
 		b, ok := buckets[month]
 		if !ok {
 			b = &models.MonthBucket{Month: month, ByActivity: map[string]int64{}}
 			buckets[month] = b
 			order = append(order, month)
 		}
-		b.ByActivity[fmt.Sprint(activityID)] = secs
-		b.Total += secs
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
+		b.ByActivity[fmt.Sprint(p.activityID)] += p.secs
+		b.Total += p.secs
 	}
 	out := make([]models.MonthBucket, 0, len(order))
 	for _, m := range order {
@@ -149,26 +231,19 @@ func (s *Store) MonthBuckets(year string) ([]models.MonthBucket, error) {
 	return out, nil
 }
 
-// ActivityTotalsBetween sums recorded seconds per activity between two local
-// dates (inclusive).
+// ActivityTotalsBetween sums recorded seconds per activity between two
+// local dates (inclusive). Only the parts of entries that fall inside the
+// range count.
 func (s *Store) ActivityTotalsBetween(fromDate, toDate string) (map[int64]int64, error) {
-	rows, err := s.db.Query(
-		`SELECT activity_id, SUM(duration_seconds) FROM entries
-		 WHERE substr(started_at,1,10) BETWEEN ? AND ?
-		 GROUP BY activity_id`, fromDate, toDate)
+	pieces, err := s.loadDayPieces(fromDate, toDate)
 	if err != nil {
 		return nil, fmt.Errorf("activity totals: %w", err)
 	}
-	defer rows.Close()
 	out := map[int64]int64{}
-	for rows.Next() {
-		var id, secs int64
-		if err := rows.Scan(&id, &secs); err != nil {
-			return nil, err
-		}
-		out[id] = secs
+	for _, p := range pieces {
+		out[p.activityID] += p.secs
 	}
-	return out, rows.Err()
+	return out, nil
 }
 
 // Heatmap returns per-day total seconds for the last n local days ending
@@ -179,22 +254,13 @@ func (s *Store) Heatmap(days int, now time.Time) (map[string]int64, error) {
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.db.Query(
-		`SELECT substr(started_at,1,10), SUM(duration_seconds) FROM entries
-		 WHERE substr(started_at,1,10) >= ? AND substr(started_at,1,10) <= ?
-		 GROUP BY substr(started_at,1,10)`, from, today)
+	pieces, err := s.loadDayPieces(from, today)
 	if err != nil {
 		return nil, fmt.Errorf("heatmap: %w", err)
 	}
-	defer rows.Close()
 	out := map[string]int64{}
-	for rows.Next() {
-		var d string
-		var secs int64
-		if err := rows.Scan(&d, &secs); err != nil {
-			return nil, err
-		}
-		out[d] = secs
+	for _, p := range pieces {
+		out[p.date] += p.secs
 	}
-	return out, rows.Err()
+	return out, nil
 }

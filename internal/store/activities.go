@@ -153,6 +153,10 @@ func scanEntry(row interface{ Scan(...any) error }) (models.Entry, error) {
 const entryCols = `e.id, e.activity_id, COALESCE(a.name,''), COALESCE(a.color,'#cc785c'), e.started_at, e.ended_at, e.duration_seconds, e.note, e.source`
 
 // ListEntries returns a page of entries matching the filter, newest first.
+// The default FromDate/ToDate semantics keep entries whose start day lies in
+// the range; with f.Overlap set (and both dates present) the filter switches
+// to time-overlap: any entry whose [started_at, ended_at) intersects the
+// range, so cross-midnight entries appear on every day they touch.
 func (s *Store) ListEntries(f models.EntryFilter) (models.EntryList, error) {
 	where := []string{"1=1"}
 	var args []any
@@ -160,13 +164,30 @@ func (s *Store) ListEntries(f models.EntryFilter) (models.EntryList, error) {
 		where = append(where, "e.activity_id = ?")
 		args = append(args, *f.ActivityID)
 	}
-	if f.FromDate != "" {
-		where = append(where, "substr(e.started_at,1,10) >= ?")
-		args = append(args, f.FromDate)
-	}
-	if f.ToDate != "" {
-		where = append(where, "substr(e.started_at,1,10) <= ?")
-		args = append(args, f.ToDate)
+	if f.Overlap != nil && *f.Overlap && f.FromDate != "" && f.ToDate != "" {
+		fromStart, err := startOfDay(f.FromDate)
+		if err != nil {
+			return models.EntryList{}, err
+		}
+		next, err := AddDays(f.ToDate, 1)
+		if err != nil {
+			return models.EntryList{}, err
+		}
+		toExcl, err := startOfDay(next)
+		if err != nil {
+			return models.EntryList{}, err
+		}
+		where = append(where, "e.ended_at >= ? AND e.started_at < ?")
+		args = append(args, fromStart, toExcl)
+	} else {
+		if f.FromDate != "" {
+			where = append(where, "substr(e.started_at,1,10) >= ?")
+			args = append(args, f.FromDate)
+		}
+		if f.ToDate != "" {
+			where = append(where, "substr(e.started_at,1,10) <= ?")
+			args = append(args, f.ToDate)
+		}
 	}
 	w := strings.Join(where, " AND ")
 
@@ -206,6 +227,32 @@ func (s *Store) ListEntries(f models.EntryFilter) (models.EntryList, error) {
 		return models.EntryList{}, err
 	}
 	return models.EntryList{Items: items, Total: total, Page: page, PageSize: size}, nil
+}
+
+// ListAllEntries returns every entry without pagination, newest first. It
+// backs the full-database JSON/CSV exports; the paginated ListEntries keeps
+// its 200-per-page cap for the UI. The store keeps a single connection
+// (SetMaxOpenConns(1)), so the sequential reads see a consistent snapshot.
+func (s *Store) ListAllEntries() ([]models.Entry, error) {
+	rows, err := s.db.Query(`SELECT ` + entryCols + ` FROM entries e
+	      LEFT JOIN activities a ON a.id = e.activity_id
+	      ORDER BY e.started_at DESC, e.id DESC`)
+	if err != nil {
+		return nil, fmt.Errorf("list all entries: %w", err)
+	}
+	defer rows.Close()
+	items := []models.Entry{}
+	for rows.Next() {
+		e, err := scanEntry(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 // GetEntry fetches one entry with activity info joined.

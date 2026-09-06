@@ -75,11 +75,14 @@ export function localRFC3339(d: Date): string {
   );
 }
 
-/** Stored RFC3339 → value for <input type="datetime-local"> ("YYYY-MM-DDTHH:mm"). */
+/** Stored RFC3339 → value for <input type="datetime-local"> ("YYYY-MM-DDTHH:mm:ss").
+ * Second precision is required so editing a note never rewrites the stored
+ * times to the minute (which would silently change durations or reject
+ * same-minute records). Pair with <input step="1">. */
 export function toLocalInput(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  return `${dateStr(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${dateStr(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
 /** datetime-local value → local RFC3339 (empty when invalid). */
@@ -88,6 +91,16 @@ export function fromLocalInput(value: string): string {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return "";
   return localRFC3339(d);
+}
+
+/**
+ * Number of Unicode code points in s (whitespace-trimmed, like the backend).
+ * Code points are the shared counting unit between the form and Go's
+ * utf8.RuneCountInString; a native maxlength would count UTF-16 units and
+ * disagree on surrogate pairs.
+ */
+export function codePointLength(s: string): number {
+  return [...s.trim()].length;
 }
 
 /** Stored RFC3339 → "今天 14:30" / "9月4日 09:15". */

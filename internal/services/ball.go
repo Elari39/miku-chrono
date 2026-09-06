@@ -157,8 +157,9 @@ func (s *BallService) SetCloseAction(action string) error {
 // --- internal helpers (menu callbacks / window hooks) ---
 
 // ToggleTimerFromMenu stops the running timer, or resumes the last one when
-// idle, from the ball's context menu / system tray. The change is broadcast
-// so every window refreshes; failures surface as a transient toast.
+// idle, from the ball's context menu / system tray. TimerService broadcasts
+// timer:started / timer:stopped itself after each successful change, so this
+// wrapper only surfaces failures as a transient toast.
 func (s *BallService) ToggleTimerFromMenu() {
 	if s.Timer == nil || s.App == nil {
 		return
@@ -171,16 +172,12 @@ func (s *BallService) ToggleTimerFromMenu() {
 	if st.Running {
 		if _, err := s.Timer.Stop(); err != nil {
 			s.App.Event.Emit(EventBallToast, err.Error())
-			return
 		}
-		s.App.Event.Emit(EventTimerStopped)
 		return
 	}
 	if _, err := s.Timer.StartLast(); err != nil {
 		s.App.Event.Emit(EventBallToast, err.Error())
-		return
 	}
-	s.App.Event.Emit(EventTimerStarted)
 }
 
 // IsQuitting reports whether a real app quit is in progress (used by the

@@ -13,6 +13,7 @@ import { useVersionedLoad } from "../composables/useVersionedLoad";
 import { formatDay, formatDurationLong, formatWhen, todayStr } from "../lib/format";
 import {
   buildTimelineSegments,
+  dayPortionSeconds,
   elapsedDaysInPeriod,
   fillDailyBuckets,
   fillMonthBuckets,
@@ -65,7 +66,9 @@ const names = computed(() => {
 
 const grandTotal = computed(() => totals.value.reduce((s, t) => s + t.seconds, 0));
 const peak = computed(() => peakBucket(buckets.value));
-const timelineSegments = computed(() => buildTimelineSegments(dayEntries.value));
+// Day view shows the overlap-filtered list, so cross-midnight entries are
+// clipped to the displayed day's own slice on the timeline.
+const timelineSegments = computed(() => buildTimelineSegments(dayEntries.value, range.value.start));
 
 async function loadPeriod(isCurrent: () => boolean) {
   try {
@@ -78,6 +81,9 @@ async function loadPeriod(isCurrent: () => boolean) {
           activityId: null,
           fromDate: start,
           toDate: end,
+          // Overlap: yesterday-started entries that cross midnight show up
+          // on today's timeline and detail list, clipped to today's part.
+          overlap: true,
           page: 1,
           pageSize: 200,
         } satisfies EntryFilter),
@@ -183,25 +189,27 @@ const participantsSub = computed(() =>
 
 <template>
   <div class="mx-auto max-w-5xl px-8 py-8">
-    <div class="mb-6 flex flex-wrap items-end justify-between gap-3">
-      <h1 class="font-display text-2xl font-semibold text-ink">统计</h1>
-      <div class="flex flex-wrap items-center gap-2">
-        <!-- granularity switcher -->
-        <div class="flex rounded-lg border border-hairline bg-white p-0.5">
-          <button
-            v-for="g in GRANULARITY_ORDER"
-            :key="g"
-            class="cursor-pointer rounded-md px-3 py-1.5 text-sm transition-colors"
-            :class="gran === g ? 'bg-primary font-medium text-white' : 'text-muted hover:text-body'"
-            @click="switchGran(g)"
-          >
-            {{ GRANULARITY_LABELS[g] }}
-          </button>
-        </div>
-        <!-- period navigation -->
+    <div class="mb-6 flex flex-wrap items-center gap-x-4 gap-y-3">
+      <h1 class="shrink-0 font-display text-2xl font-semibold text-ink">统计</h1>
+      <!-- granularity switcher: left-anchored next to the title, so its
+           position never depends on the right-side controls -->
+      <div class="flex rounded-lg border border-hairline bg-white p-0.5">
+        <button
+          v-for="g in GRANULARITY_ORDER"
+          :key="g"
+          class="cursor-pointer rounded-md px-3 py-1.5 text-sm transition-colors"
+          :class="gran === g ? 'bg-primary font-medium text-white' : 'text-muted hover:text-body'"
+          @click="switchGran(g)"
+        >
+          {{ GRANULARITY_LABELS[g] }}
+        </button>
+      </div>
+      <!-- period navigation + day picker: right-anchored; width changes here
+           never displace the switcher -->
+      <div class="ml-auto flex flex-wrap items-center justify-end gap-1">
         <div class="flex items-center gap-1">
           <button class="mc-btn-ghost px-2 py-1.5" title="上一段" @click="prevPeriod">←</button>
-          <span class="w-56 text-center text-sm font-medium text-ink">{{ label }}</span>
+          <span class="whitespace-nowrap text-sm font-medium text-ink">{{ label }}</span>
           <button class="mc-btn-ghost px-2 py-1.5" title="下一段" @click="nextPeriod">→</button>
           <button class="mc-btn-ghost py-1.5" @click="goCurrent">{{ QUICK_LABELS[gran] }}</button>
         </div>
@@ -335,13 +343,23 @@ const participantsSub = computed(() =>
                 "
                 >{{ e.source === "timer" ? "计时" : "补录" }}</span
               >
+              <span
+                v-if="
+                  e.startedAt.slice(0, 10) !== range.start || e.endedAt.slice(0, 10) !== range.start
+                "
+                class="rounded-full bg-black/5 px-1.5 py-0.5 text-[10px] text-muted"
+                >跨天</span
+              >
             </div>
             <div class="mt-0.5 truncate text-xs text-muted">
               {{ formatWhen(e.startedAt) }} → {{ formatWhen(e.endedAt) }}
               <span v-if="e.note" class="ml-1">· {{ e.note }}</span>
             </div>
           </div>
-          <DurationText :seconds="e.durationSeconds" class="text-sm font-medium text-body" />
+          <DurationText
+            :seconds="dayPortionSeconds(e, range.start)"
+            class="text-sm font-medium text-body"
+          />
         </div>
       </div>
     </template>

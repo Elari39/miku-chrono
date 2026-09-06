@@ -26,9 +26,7 @@ export const router = createRouter({
     },
     {
       path: "/activities",
-      name: "activities",
-      component: () => import("./views/ActivitiesView.vue"),
-      meta: { title: "活动" },
+      redirect: "/",
     },
     {
       path: "/settings",

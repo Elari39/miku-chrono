@@ -99,6 +99,11 @@ func main() {
 	ballService.BallWindow = ballWindow
 	ballService.Timer = timerService
 	ballService.StartPositionPersist()
+	// Broadcast timer state changes from the shared success paths so every
+	// window (ball, tray, other views) refreshes right after start/stop/clear.
+	broadcast := func(event string) { app.Event.Emit(event) }
+	timerService.Emit = broadcast
+	dataService.Emit = broadcast
 
 	// Closing the main window hides it (default) or quits the app, per the
 	// stored close_action. The hook cancels the close first; a real quit is

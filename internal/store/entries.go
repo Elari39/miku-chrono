@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"mikuchrono/internal/models"
 )
@@ -20,7 +21,9 @@ func (s *Store) CreateManualEntry(activityID int64, startedAt, endedAt, note str
 		return e, err
 	}
 	note = strings.TrimSpace(note)
-	if len(note) > 500 {
+	// Count Unicode code points (runes), matching the frontend's counting —
+	// byte length would reject ~167 Chinese characters.
+	if utf8.RuneCountInString(note) > 500 {
 		return e, validationf("备注最多 500 字")
 	}
 	ts := FormatTime(now)
@@ -47,7 +50,8 @@ func (s *Store) UpdateEntry(e models.Entry, now time.Time) error {
 		return err
 	}
 	e.Note = strings.TrimSpace(e.Note)
-	if len(e.Note) > 500 {
+	// Same code-point rule as CreateManualEntry so both paths agree.
+	if utf8.RuneCountInString(e.Note) > 500 {
 		return validationf("备注最多 500 字")
 	}
 	res, err := s.db.Exec(

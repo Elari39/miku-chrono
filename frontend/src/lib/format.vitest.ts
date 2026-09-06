@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  codePointLength,
   dateStr,
   daysAgoStr,
   formatClock,
@@ -91,13 +92,24 @@ describe("formatDay", () => {
 });
 
 describe("datetime-local conversions", () => {
-  it("round-trips a timestamp through datetime-local values", () => {
+  it("round-trips a timestamp through datetime-local values with seconds", () => {
     const iso = localRFC3339(new Date(2025, 8, 5, 14, 30, 45));
     const input = toLocalInput(iso);
-    expect(input).toBe("2025-09-05T14:30");
-    // Seconds are dropped by toLocalInput, so the round-trip is stable at
-    // minute precision only.
+    expect(input).toBe("2025-09-05T14:30:45");
+    // Second precision is preserved so editing a note never rewrites the
+    // stored times to the minute.
     expect(toLocalInput(fromLocalInput(input))).toBe(input);
+  });
+
+  it("keeps a 25-second record intact when only the note is edited", () => {
+    // Regression for the minute-truncation bug: 10:00:45 → 10:01:10 must
+    // survive a form round-trip unchanged.
+    const start = toLocalInput("2025-09-05T10:00:45+08:00");
+    const end = toLocalInput("2025-09-05T10:01:10+08:00");
+    expect(start).toBe("2025-09-05T10:00:45");
+    expect(end).toBe("2025-09-05T10:01:10");
+    expect(fromLocalInput(start)).toBe("2025-09-05T10:00:45+08:00");
+    expect(fromLocalInput(end)).toBe("2025-09-05T10:01:10+08:00");
   });
 
   it("returns empty strings for invalid input", () => {
@@ -116,6 +128,26 @@ describe("datetime-local conversions", () => {
         `${sign}${String(Math.floor(Math.abs(offset) / 60)).padStart(2, "0")}:${String(Math.abs(offset) % 60).padStart(2, "0")}`,
       ),
     ).toBe(true);
+  });
+});
+
+describe("codePointLength", () => {
+  it("counts Unicode code points like the backend's rune count", () => {
+    // 167 汉字 = 167 code points = 501 UTF-8 bytes: byte-length validation
+    // used to reject it, code-point validation accepts it.
+    expect(codePointLength("中".repeat(167))).toBe(167);
+    expect(codePointLength("中".repeat(500))).toBe(500);
+    expect(codePointLength("中".repeat(501))).toBe(501);
+  });
+
+  it("counts surrogate pairs as one code point, unlike UTF-16 maxlength", () => {
+    expect("😀".length).toBe(2); // native maxlength would count 2
+    expect(codePointLength("😀".repeat(500))).toBe(500);
+  });
+
+  it("trims whitespace before counting, matching the backend", () => {
+    expect(codePointLength("  abc  ")).toBe(3);
+    expect(codePointLength("   ")).toBe(0);
   });
 });
 

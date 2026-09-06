@@ -73,7 +73,7 @@
 ### 环境要求
 
 - Go 1.25+
-- Node.js（含 npm）
+- Node.js（含 pnpm）
 - [wails3 CLI](https://v3.wails.io/docs/next/gettingstarted/installation/)（版本需与 `go.mod` 匹配）
 
 ### 开发模式（热重载）

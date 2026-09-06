@@ -75,6 +75,10 @@ func (s *CategoryService) Delete(id int64) error {
 // TimerService owns the at-most-one running timer.
 type TimerService struct {
 	Store *store.Store
+	// Emit, when set (wired in main.go), broadcasts the existing app-wide
+	// timer events after each successful state change so every window
+	// (floating ball, tray-linked views) refreshes immediately. Nil in tests.
+	Emit func(event string)
 }
 
 // GetState returns the current timer state (running or idle).
@@ -85,6 +89,7 @@ func (s *TimerService) GetState() (models.TimerState, error) {
 // Start begins timing the given activity, closing any running timer first
 // (mutual exclusion). Starting the already-running activity is a no-op;
 // starting an idle activity that matches the paused chain resumes it.
+// Broadcasts timer:started only when the state actually changed.
 func (s *TimerService) Start(activityID int64) (models.TimerState, error) {
 	now := time.Now()
 	current, err := s.Store.GetTimerState(now)
@@ -104,6 +109,9 @@ func (s *TimerService) Start(activityID int64) (models.TimerState, error) {
 		return st, err
 	}
 	st.ActivityName, st.ActivityColor = a.Name, a.Color
+	if s.Emit != nil {
+		s.Emit(EventTimerStarted)
+	}
 	return st, nil
 }
 
@@ -125,9 +133,17 @@ func (s *TimerService) StartLast() (models.TimerState, error) {
 }
 
 // Stop ends the running timer and records the entry. Returns nil when the
-// session was too short to record.
+// session was too short to record. Broadcasts timer:stopped on success —
+// including discarded short sessions, since the state still became idle.
 func (s *TimerService) Stop() (*models.Entry, error) {
-	return s.Store.StopTimer(time.Now())
+	entry, err := s.Store.StopTimer(time.Now())
+	if err != nil {
+		return entry, err
+	}
+	if s.Emit != nil {
+		s.Emit(EventTimerStopped)
+	}
+	return entry, nil
 }
 
 // EntryService handles listing and manual backfill of entries.

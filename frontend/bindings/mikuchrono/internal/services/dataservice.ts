@@ -12,7 +12,8 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 /**
  * ClearEntries deletes every entry and any running timer state. Activities
- * are kept.
+ * are kept. A success broadcast lets every window drop its local running
+ * state immediately (the cleared timer must not keep ticking in the UI).
  */
 export function ClearEntries(): $CancellablePromise<void> {
     return $Call.ByID(477908261);

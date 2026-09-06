@@ -168,10 +168,13 @@ describe("buildTimelineSegments", () => {
   };
 
   it("maps entries to minute segments sorted by start", () => {
-    const segs = buildTimelineSegments([
-      { ...base, startedAt: "2025-09-05T10:00:00+08:00", durationSeconds: 1800 },
-      { ...base, startedAt: "2025-09-05T08:30:00+08:00", durationSeconds: 3600 },
-    ]);
+    const segs = buildTimelineSegments(
+      [
+        { ...base, startedAt: "2025-09-05T10:00:00+08:00", endedAt: "2025-09-05T10:30:00+08:00" },
+        { ...base, startedAt: "2025-09-05T08:30:00+08:00", endedAt: "2025-09-05T09:30:00+08:00" },
+      ],
+      "2025-09-05",
+    );
     expect(segs).toHaveLength(2);
     expect(segs[0].startMin).toBe(8 * 60 + 30);
     expect(segs[0].endMin).toBe(9 * 60 + 30);
@@ -180,18 +183,27 @@ describe("buildTimelineSegments", () => {
   });
 
   it("clamps cross-midnight entries at 24:00", () => {
-    const segs = buildTimelineSegments([
-      { ...base, startedAt: "2025-09-05T23:00:00+08:00", durationSeconds: 7200 },
-    ]);
+    const segs = buildTimelineSegments(
+      [{ ...base, startedAt: "2025-09-05T23:00:00+08:00", endedAt: "2025-09-06T01:00:00+08:00" }],
+      "2025-09-05",
+    );
     expect(segs[0].endMin).toBe(1440);
     expect(segs[0].secs).toBe(3600); // only the part inside this day
   });
 
   it("drops zero-length segments and survives null activity colors", () => {
-    const segs = buildTimelineSegments([
-      { ...base, startedAt: "2025-09-05T09:00:00+08:00", durationSeconds: 0 },
-      { ...base, startedAt: "2025-09-05T09:00:00+08:00", activityColor: "", durationSeconds: 60 },
-    ]);
+    const segs = buildTimelineSegments(
+      [
+        { ...base, startedAt: "2025-09-05T09:00:00+08:00", endedAt: "2025-09-05T09:00:00+08:00" },
+        {
+          ...base,
+          startedAt: "2025-09-05T09:00:00+08:00",
+          activityColor: "",
+          endedAt: "2025-09-05T09:01:00+08:00",
+        },
+      ],
+      "2025-09-05",
+    );
     expect(segs).toHaveLength(1);
     expect(segs[0].color).toBe("#cc785c"); // fallback color
   });

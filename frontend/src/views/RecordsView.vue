@@ -9,7 +9,7 @@ import {
 } from "../lib/api";
 import { useToast } from "../composables/useToast";
 import { useVersionedLoad } from "../composables/useVersionedLoad";
-import { formatWhen, fromLocalInput, toLocalInput } from "../lib/format";
+import { codePointLength, formatWhen, fromLocalInput, toLocalInput } from "../lib/format";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
 import DurationText from "../components/DurationText.vue";
 import EmptyState from "../components/EmptyState.vue";
@@ -34,6 +34,10 @@ const editorOpen = ref(false);
 const editing = ref<Entry | null>(null);
 const form = ref({ activityId: 0, start: "", end: "", note: "" });
 const formError = ref("");
+
+// Shared counting unit with the backend's 500-rune note limit (code points,
+// not UTF-16 units like a native maxlength).
+const noteCount = computed(() => codePointLength(form.value.note));
 
 const deleteTarget = ref<Entry | null>(null);
 
@@ -119,6 +123,10 @@ async function save() {
   }
   if (!start || !end) {
     formError.value = "请填写开始与结束时间";
+    return;
+  }
+  if (noteCount.value > 500) {
+    formError.value = "备注最多 500 字";
     return;
   }
   try {
@@ -251,11 +259,11 @@ onMounted(() => {
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="mc-label">开始时间</label>
-            <input v-model="form.start" type="datetime-local" class="mc-input" />
+            <input v-model="form.start" type="datetime-local" step="1" class="mc-input" />
           </div>
           <div>
             <label class="mc-label">结束时间</label>
-            <input v-model="form.end" type="datetime-local" class="mc-input" />
+            <input v-model="form.end" type="datetime-local" step="1" class="mc-input" />
           </div>
         </div>
         <div>
@@ -263,10 +271,12 @@ onMounted(() => {
           <input
             v-model="form.note"
             type="text"
-            maxlength="500"
             placeholder="这次专注做了什么？"
             class="mc-input"
           />
+          <p class="mt-1 text-right text-xs" :class="noteCount > 500 ? 'text-error' : 'text-muted'">
+            {{ noteCount }}/500
+          </p>
         </div>
         <p v-if="formError" class="text-xs text-error">{{ formError }}</p>
       </div>

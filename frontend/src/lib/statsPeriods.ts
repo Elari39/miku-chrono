@@ -30,7 +30,6 @@ export interface StatBucket {
 }
 
 const MS_DAY = 86_400_000;
-const DAY_MIN = 24 * 60;
 
 function parseDay(s: string): Date {
   return new Date(s + "T00:00:00");
@@ -204,25 +203,19 @@ export interface TimelineSegment {
   activityId: number;
   color: string;
   name: string;
-  /** Minutes from 00:00 of the day. */
+  /** Minutes from 00:00 of the displayed day. */
   startMin: number;
-  /** Minutes from 00:00, clamped to 1440 — cross-midnight entries stop here. */
+  /** Minutes from 00:00, clamped to the displayed day's 24:00. */
   endMin: number;
-  /** Seconds spent inside this day (startMin..endMin). */
+  /** Seconds spent inside the displayed day (startMin..endMin). */
   secs: number;
-}
-
-/** Parse an RFC3339 local timestamp into minutes-from-midnight. */
-function minutesOfDay(iso: string): number {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return 0;
-  return d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60;
 }
 
 /**
  * Convert one day's entries into 0..1440 minute segments sorted by start.
- * Records belong to their start day (backend semantics), so anything running
- * past midnight is clamped to 24:00 of this day's strip.
+ * Each segment is the entry's overlap with `day`, so cross-midnight entries
+ * render the displayed day's own slice — starting at 0:00 when the entry
+ * began the day before, stopping at 24:00 when it runs into the next day.
  */
 export function buildTimelineSegments(
   entries: {
@@ -230,23 +223,42 @@ export function buildTimelineSegments(
     activityColor: string;
     activityName: string;
     startedAt: string;
-    durationSeconds: number;
+    endedAt: string;
   }[],
+  day: string,
 ): TimelineSegment[] {
+  const dayStartMs = parseDay(day).getTime();
+  const dayEndMs = dayStartMs + MS_DAY;
   return entries
     .map((e) => {
-      const startMin = Math.min(DAY_MIN, Math.max(0, minutesOfDay(e.startedAt)));
-      const rawEnd = startMin + Math.max(0, e.durationSeconds) / 60;
-      const endMin = Math.min(DAY_MIN, rawEnd);
+      const overlapStart = Math.max(new Date(e.startedAt).getTime(), dayStartMs);
+      const overlapEnd = Math.min(new Date(e.endedAt).getTime(), dayEndMs);
+      if (overlapEnd <= overlapStart) return null;
       return {
         activityId: e.activityId,
         color: e.activityColor || "#cc785c",
         name: e.activityName || `活动 ${e.activityId}`,
-        startMin,
-        endMin,
-        secs: Math.max(0, Math.min(e.durationSeconds, Math.round((DAY_MIN - startMin) * 60))),
+        startMin: (overlapStart - dayStartMs) / 60000,
+        endMin: (overlapEnd - dayStartMs) / 60000,
+        secs: Math.round((overlapEnd - overlapStart) / 1000),
       };
     })
-    .filter((s) => s.endMin > s.startMin)
+    .filter((s): s is TimelineSegment => s !== null)
     .sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin);
+}
+
+/**
+ * Seconds of one entry that fall inside the given local day (0 when the
+ * entry does not touch that day). Mirrors the backend's split semantics so
+ * the day-detail list can show the day's portion of a cross-midnight entry.
+ */
+export function dayPortionSeconds(
+  entry: { startedAt: string; endedAt: string },
+  day: string,
+): number {
+  const dayStartMs = parseDay(day).getTime();
+  const overlap =
+    Math.min(new Date(entry.endedAt).getTime(), dayStartMs + MS_DAY) -
+    Math.max(new Date(entry.startedAt).getTime(), dayStartMs);
+  return Math.max(0, Math.round(overlap / 1000));
 }
