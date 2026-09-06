@@ -196,7 +196,7 @@ func (s *Store) ListEntries(f models.EntryFilter) (models.EntryList, error) {
 		page = 1
 	}
 	if size < 1 {
-		size = 50
+		size = 200
 	}
 	if size > 200 {
 		size = 200

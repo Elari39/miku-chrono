@@ -140,10 +140,11 @@ func (s *Store) TotalSecondsByActivity() (map[int64]int64, error) {
 }
 
 // ActiveDays returns the set of local dates on which at least one record
-// had any duration. A nil activityID means "any activity". Days are taken
-// from the split pieces, so a cross-midnight entry marks both days active.
+// started. A nil activityID means "any activity". A cross-midnight entry
+// belongs to the day it started on (the project's accounting convention),
+// so only started_at's date is marked.
 func (s *Store) ActiveDays(activityID *int64) (map[string]bool, error) {
-	q := `SELECT started_at, ended_at FROM entries WHERE duration_seconds > 0`
+	q := `SELECT started_at FROM entries WHERE duration_seconds > 0`
 	var args []any
 	if activityID != nil {
 		q += ` AND activity_id = ?`
@@ -156,21 +157,15 @@ func (s *Store) ActiveDays(activityID *int64) (map[string]bool, error) {
 	defer rows.Close()
 	out := map[string]bool{}
 	for rows.Next() {
-		var startS, endS string
-		if err := rows.Scan(&startS, &endS); err != nil {
+		var startS string
+		if err := rows.Scan(&startS); err != nil {
 			return nil, err
 		}
 		start, err := ParseTime(startS)
 		if err != nil {
 			return nil, fmt.Errorf("active days: parse started_at: %w", err)
 		}
-		end, err := ParseTime(endS)
-		if err != nil {
-			return nil, fmt.Errorf("active days: parse ended_at: %w", err)
-		}
-		for _, p := range splitByLocalDay(start, end) {
-			out[p.date] = true
-		}
+		out[Today(start)] = true
 	}
 	return out, rows.Err()
 }

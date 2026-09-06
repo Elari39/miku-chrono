@@ -1,12 +1,48 @@
-.task
-.pi
-bin
-frontend/dist
-frontend/node_modules
-build/linux/appimage/build
+# ---- 构建产物 ----
+bin/
+build/bin/
+build/linux/appimage/build/
 build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
+*.syso
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
 # Mobile generated (per-machine; overlays hold absolute paths)
 build/ios/xcode/overlay.json
 build/ios/xcode/gen/
 build/android/overlay.json
 build/android/gen/
+
+# ---- 前端生成物 ----
+frontend/dist/
+frontend/node_modules/
+frontend/coverage/
+
+# ---- Go 工具产物 ----
+*.test
+*.out
+go.work
+go.work.sum
+
+# ---- 日志与本地配置 ----
+*.log
+pnpm-debug.log*
+.env.local
+.env.*.local
+
+# ---- 本机工具 ----
+.task
+.pi
+.vscode/
+.idea/
+
+# ---- 系统文件 ----
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- 本地审查报告（不公开） ----
+项目问题与修复计划报告.md
