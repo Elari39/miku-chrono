@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { useRoute } from "vue-router";
 import {
   ActivityService,
   EntryService,
@@ -16,6 +17,7 @@ import EmptyState from "../components/EmptyState.vue";
 import Modal from "../components/Modal.vue";
 
 const { success, error } = useToast();
+const route = useRoute();
 
 const activities = ref<Activity[]>([]);
 const entries = ref<Entry[]>([]);
@@ -23,9 +25,16 @@ const total = ref(0);
 const page = ref(1);
 const pageSize = 20;
 
+// Deep link from the stats page truncation hint: /records?from=…&to=… prefills
+// the date range so the first load lands pre-filtered. Malformed values are
+// ignored rather than surfacing a backend date-parse error.
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const queryFrom = typeof route.query.from === "string" && DATE_RE.test(route.query.from) ? route.query.from : "";
+const queryTo = typeof route.query.to === "string" && DATE_RE.test(route.query.to) ? route.query.to : "";
+
 const filterActivityId = ref<number | "">("");
-const filterFrom = ref("");
-const filterTo = ref("");
+const filterFrom = ref(queryFrom);
+const filterTo = ref(queryTo);
 
 const pages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)));
 const activityById = computed(() => new Map(activities.value.map((a) => [a.id, a])));

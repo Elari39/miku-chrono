@@ -157,6 +157,27 @@ func TestTimerChainSurvivesDeletedActivity(t *testing.T) {
 	}
 }
 
+func TestStopTimerEntryCarriesActivityDisplayFields(t *testing.T) {
+	s := newTestStore(t)
+	base := time.Date(2025, 9, 1, 9, 0, 0, 0, time.Local)
+
+	if _, err := s.StartTimer(1, base); err != nil {
+		t.Fatal(err)
+	}
+	entry, err := s.StopTimer(base.Add(5 * time.Minute))
+	if err != nil || entry == nil {
+		t.Fatalf("stop: entry=%+v err=%v", entry, err)
+	}
+	// The toast renders the returned entry directly: name/color must be
+	// filled in, not just the id.
+	if entry.ActivityID != 1 || entry.ActivityName != "学习" || entry.ActivityColor != "#cc785c" {
+		t.Fatalf("entry display fields: %+v", entry)
+	}
+	if entry.DurationSeconds != 300 || entry.Source != "timer" || entry.StartedAt == "" || entry.EndedAt == "" {
+		t.Fatalf("entry fields: %+v", entry)
+	}
+}
+
 func TestTimerChainClearedByClearEntries(t *testing.T) {
 	s := newTestStore(t)
 	base := time.Date(2025, 9, 1, 9, 0, 0, 0, time.Local)

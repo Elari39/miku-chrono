@@ -15,6 +15,10 @@ import (
 // ActivityService manages the activity catalog.
 type ActivityService struct {
 	Store *store.Store
+	// Emit, when set (wired in main.go), broadcasts the timer:stopped event
+	// after a delete closed the activity's running timer so every window
+	// refreshes. Nil in tests.
+	Emit func(event string)
 }
 
 // List returns activities, optionally including archived ones.
@@ -45,6 +49,21 @@ func (s *ActivityService) SetArchived(id int64, archived bool) error {
 // Delete removes an activity together with all of its entries.
 func (s *ActivityService) Delete(id int64) error {
 	return s.Store.DeleteActivity(id)
+}
+
+// StopAndDelete stops the activity's running timer (recording its session)
+// and deletes the activity with all of its entries in one atomic operation.
+// entry is nil when no timer was running or the session was too short to
+// record. Broadcasts timer:stopped only when a running timer was closed.
+func (s *ActivityService) StopAndDelete(id int64) (*models.Entry, error) {
+	entry, stopped, err := s.Store.StopAndDeleteActivity(id, time.Now())
+	if err != nil {
+		return entry, err
+	}
+	if stopped && s.Emit != nil {
+		s.Emit(EventTimerStopped)
+	}
+	return entry, nil
 }
 
 // CategoryService manages the user-defined categories activities belong to.

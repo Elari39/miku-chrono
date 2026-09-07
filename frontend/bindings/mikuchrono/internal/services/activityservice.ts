@@ -43,6 +43,16 @@ export function SetArchived(id: number, archived: boolean): $CancellablePromise<
 }
 
 /**
+ * StopAndDelete stops the activity's running timer (recording its session)
+ * and deletes the activity with all of its entries in one atomic operation.
+ * entry is nil when no timer was running or the session was too short to
+ * record. Broadcasts timer:stopped only when a running timer was closed.
+ */
+export function StopAndDelete(id: number): $CancellablePromise<models$0.Entry | null> {
+    return $Call.ByID(240369927, id);
+}
+
+/**
  * Update modifies an existing activity.
  */
 export function Update(a: models$0.Activity): $CancellablePromise<void> {

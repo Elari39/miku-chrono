@@ -19,7 +19,7 @@ import ConfirmDialog from "../components/ConfirmDialog.vue";
 import RunningTimerCard from "../components/RunningTimerCard.vue";
 import EmptyState from "../components/EmptyState.vue";
 
-const { state, running, start, stop } = useTimer();
+const { state, running, start, stop, refresh } = useTimer();
 const { success, error } = useToast();
 
 const stats = ref<ActivityStat[]>([]);
@@ -158,13 +158,13 @@ const deleteMessage = computed(() => {
 async function doDelete() {
   const target = deleteTarget.value;
   if (!target) return;
+  // StopAndDelete closes the running timer (recording its session) and
+  // deletes the activity in one backend transaction — the old stop-then-
+  // delete sequence could strand a stopped timer when the delete failed.
+  const wasRunning = state.running && state.activityId === target.id;
   try {
-    // Deleting the activity whose timer is running would orphan the local
-    // timer state; stop first (failure aborts the delete).
-    if (state.running && state.activityId === target.id) {
-      await stop();
-    }
-    await ActivityService.Delete(target.id);
+    await ActivityService.StopAndDelete(target.id);
+    if (wasRunning) await refresh();
     success("活动及其记录已删除");
     deleteTarget.value = null;
     await reload();

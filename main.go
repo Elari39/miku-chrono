@@ -137,6 +137,7 @@ func main() {
 	// Broadcast timer state changes from the shared success paths so every
 	// window (ball, tray, other views) refreshes right after start/stop/clear.
 	broadcast := func(event string) { app.Event.Emit(event) }
+	activityService.Emit = broadcast
 	timerService.Emit = broadcast
 	dataService.Emit = broadcast
 

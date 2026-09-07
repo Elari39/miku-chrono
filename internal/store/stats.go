@@ -54,9 +54,9 @@ func startOfDay(date string) (string, error) {
 	return FormatTime(t), nil
 }
 
-// loadDayPieces queries every entry overlapping the inclusive local date
-// range [fromDate, toDate] (i.e. started_at < the day after toDate and
-// ended_at >= fromDate's midnight) and splits each into per-day pieces.
+// loadDayPieces queries every entry half-open-overlapping the inclusive
+// local date range [fromDate, toDate] (started_at < the day after toDate AND
+// ended_at > fromDate's midnight) and splits each into per-day pieces.
 // Pieces outside the range are dropped. Time-ordered output keeps a
 // first-seen aggregation stable.
 func (s *Store) loadDayPieces(fromDate, toDate string) ([]dayPiece, error) {
@@ -74,7 +74,7 @@ func (s *Store) loadDayPieces(fromDate, toDate string) ([]dayPiece, error) {
 	}
 	rows, err := s.db.Query(
 		`SELECT activity_id, started_at, ended_at FROM entries
-		 WHERE ended_at >= ? AND started_at < ?
+		 WHERE ended_at > ? AND started_at < ?
 		 ORDER BY started_at, id`, fromStart, toExcl)
 	if err != nil {
 		return nil, fmt.Errorf("day pieces: %w", err)

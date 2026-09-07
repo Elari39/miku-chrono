@@ -117,8 +117,20 @@ describe("projectElapsed", () => {
     expect(projectElapsed(60, snapshotAt, snapshotAt + 300_000)).toBe(360);
   });
 
-  it("never goes negative and keeps the base without a snapshot", () => {
-    expect(projectElapsed(60, 1_000_000, 1_000_000 - 90_000)).toBe(60);
-    expect(projectElapsed(60, 0, 1_000_000)).toBe(60);
+  it("keeps the base when the system clock rolled back below the snapshot", () => {
+    const snapshotAt = 1_000_000;
+    expect(projectElapsed(60, snapshotAt, snapshotAt - 90_000)).toBe(60);
+    expect(projectElapsed(60, snapshotAt, snapshotAt - 1)).toBe(60);
+  });
+
+  it("keeps the base without a snapshot and at the snapshot instant", () => {
+    const snapshotAt = 1_000_000;
+    expect(projectElapsed(60, 0, snapshotAt)).toBe(60);
+    expect(projectElapsed(60, snapshotAt, snapshotAt)).toBe(60);
+  });
+
+  it("only counts whole seconds, ignoring sub-second progress", () => {
+    const snapshotAt = 1_000_000;
+    expect(projectElapsed(60, snapshotAt, snapshotAt + 4_999)).toBe(64);
   });
 });

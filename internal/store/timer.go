@@ -254,11 +254,72 @@ func (s *Store) StopTimer(now time.Time) (*models.Entry, error) {
 	return entry, nil
 }
 
+// StopAndDeleteActivity deletes an activity together with all of its entries
+// in one transaction, first closing its running timer the same way StopTimer
+// does (recording this session's segment and folding it into the chain). The
+// delete of a timer running for a *different* activity is unaffected. stopped
+// reports whether a running timer was actually closed so the service layer can
+// broadcast the timer:stopped event. An unknown id returns ErrNotFound with
+// nothing written; any failure rolls the whole operation back, leaving the
+// running state and existing entries exactly as they were. Like StopTimer,
+// the chain then points at the deleted id (name/color resolve empty in the
+// idle state) until the user starts a new timer.
+func (s *Store) StopAndDeleteActivity(id int64, now time.Time) (entry *models.Entry, stopped bool, err error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, false, fmt.Errorf("stop and delete activity: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var runActivity int64
+	var runStarted string
+	err = tx.QueryRow(`SELECT activity_id, started_at FROM running_state WHERE id = 1`).Scan(&runActivity, &runStarted)
+	switch {
+	case isNoRows(err):
+		// Idle: nothing to close.
+	case err != nil:
+		return nil, false, fmt.Errorf("stop and delete activity: read state: %w", err)
+	case runActivity == id:
+		e, cerr := s.closeRunningTx(tx, runActivity, runStarted, now)
+		if cerr != nil {
+			return nil, false, fmt.Errorf("stop and delete activity: close session: %w", cerr)
+		}
+		entry, stopped = e, true
+		// Fold the finished segment into the chain, mirroring StopTimer.
+		_, base, _, rerr := readChain(tx)
+		if rerr != nil {
+			return nil, false, fmt.Errorf("stop and delete activity: read chain: %w", rerr)
+		}
+		if start, perr := ParseTime(runStarted); perr == nil {
+			base += int64(now.Sub(start).Seconds())
+		}
+		if werr := writeChain(tx, runActivity, base); werr != nil {
+			return nil, false, fmt.Errorf("stop and delete activity: write chain: %w", werr)
+		}
+		if _, derr := tx.Exec(`DELETE FROM running_state WHERE id = 1`); derr != nil {
+			return nil, false, fmt.Errorf("stop and delete activity: clear state: %w", derr)
+		}
+	}
+
+	res, err := tx.Exec(`DELETE FROM activities WHERE id = ?`, id)
+	if err != nil {
+		return nil, false, fmt.Errorf("stop and delete activity %d: %w", id, err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return nil, false, ErrNotFound
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, false, fmt.Errorf("stop and delete activity: commit: %w", err)
+	}
+	return entry, stopped, nil
+}
+
 // closeRunningTx finalizes the running session inside tx, inserting an entry
 // when the duration is at least minTimerSeconds. Returns the inserted entry
-// (nil, nil when the session was discarded as too short). Any error must
-// abort the surrounding transaction via the caller so the running state
-// stays intact and the session can be retried.
+// with its activity display fields joined in (nil, nil when the session was
+// discarded as too short). Any error must abort the surrounding transaction
+// via the caller so the running state stays intact and the session can be
+// retried.
 func (s *Store) closeRunningTx(tx *sql.Tx, activityID int64, startedAt string, now time.Time) (*models.Entry, error) {
 	start, err := ParseTime(startedAt)
 	if err != nil {
@@ -278,9 +339,20 @@ func (s *Store) closeRunningTx(tx *sql.Tx, activityID int64, startedAt string, n
 		return nil, fmt.Errorf("close session: insert entry: %w", err)
 	}
 	id, _ := res.LastInsertId()
+	// Load the activity display fields inside the same tx so the returned
+	// entry is ready to render (the insert above guarantees the row exists —
+	// entries.activity_id references activities).
+	var name, color string
+	if err := tx.QueryRow(
+		`SELECT COALESCE(name,''), COALESCE(color,'#cc785c') FROM activities WHERE id = ?`, activityID,
+	).Scan(&name, &color); err != nil {
+		return nil, fmt.Errorf("close session: load activity: %w", err)
+	}
 	return &models.Entry{
 		ID:              id,
 		ActivityID:      activityID,
+		ActivityName:    name,
+		ActivityColor:   color,
 		StartedAt:       startedAt,
 		EndedAt:         ended,
 		DurationSeconds: duration,

@@ -69,6 +69,11 @@ const peak = computed(() => peakBucket(buckets.value));
 // Day view shows the overlap-filtered list, so cross-midnight entries are
 // clipped to the displayed day's own slice on the timeline.
 const timelineSegments = computed(() => buildTimelineSegments(dayEntries.value, range.value.start));
+// Entry point for the full list when the day view truncates at 200 items.
+const recordsLink = computed(() => ({
+  path: "/records",
+  query: { from: range.value.start, to: range.value.end },
+}));
 
 async function loadPeriod(isCurrent: () => boolean) {
   try {
@@ -321,7 +326,10 @@ const participantsSub = computed(() =>
       <div class="mb-3 mt-6 flex items-center justify-between">
         <div class="text-sm font-medium text-ink">当日明细</div>
         <div v-if="dayTotal > 200" class="text-xs text-muted">
-          仅展示前 200 条，共 {{ dayTotal }} 条 · 完整列表请到记录页查看
+          时间轴与明细仅展示前 200 条，共 {{ dayTotal }} 条 ·
+          <router-link :to="recordsLink" class="text-primary hover:underline">
+            在记录页查看完整列表</router-link
+          >
         </div>
       </div>
       <div v-if="dayEntries.length" class="mc-card divide-y divide-hairline overflow-hidden">

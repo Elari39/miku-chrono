@@ -82,18 +82,28 @@ func (s *Store) DeleteEntry(id int64) error {
 // ClearEntries deletes every entry, clears any running timer state, resets
 // the paused timer chain and the daily-goal notification dedupe (so a goal
 // reached again after clearing notifies again today). Activities are kept.
+// All deletions run in one transaction: any failure rolls the whole clear
+// back instead of leaving a half-cleared database.
 func (s *Store) ClearEntries() error {
-	if _, err := s.db.Exec(`DELETE FROM entries`); err != nil {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("clear entries: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.Exec(`DELETE FROM entries`); err != nil {
 		return fmt.Errorf("clear entries: %w", err)
 	}
-	if _, err := s.db.Exec(`DELETE FROM running_state`); err != nil {
+	if _, err := tx.Exec(`DELETE FROM running_state`); err != nil {
 		return fmt.Errorf("clear running state: %w", err)
 	}
-	if _, err := s.db.Exec(`DELETE FROM meta WHERE key IN (?, ?)`, keyTimerActivity, keyTimerSeconds); err != nil {
+	if _, err := tx.Exec(`DELETE FROM meta WHERE key IN (?, ?)`, keyTimerActivity, keyTimerSeconds); err != nil {
 		return fmt.Errorf("clear timer chain: %w", err)
 	}
-	if _, err := s.db.Exec(`DELETE FROM meta WHERE key LIKE ?`, GoalNotifiedKeyPrefix+"%"); err != nil {
+	if _, err := tx.Exec(`DELETE FROM meta WHERE key LIKE ?`, GoalNotifiedKeyPrefix+"%"); err != nil {
 		return fmt.Errorf("clear goal notify keys: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("clear entries: commit: %w", err)
 	}
 	return nil
 }

@@ -5,11 +5,11 @@
 	"info": {
 		"0000": {
 			"ProductVersion": "0.1.0",
-			"CompanyName": "Miku",
-			"FileDescription": "Multi-activity check-in timer",
-			"LegalCopyright": "© 2026, My Company",
+			"CompanyName": "Miku Chrono",
+			"FileDescription": "多活动打卡计时桌面应用",
+			"LegalCopyright": "(c) 2026, Miku Chrono",
 			"ProductName": "Miku Chrono",
-			"Comments": "This is a comment"
+			"Comments": "以初音相伴，记录每一刻时光"
 		}
 	}
 }

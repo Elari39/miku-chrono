@@ -70,8 +70,13 @@
 
 ## 🚀 快速开始
 
+### 平台支持
+
+本项目**当前仅支持 Windows**：构建、测试与发布均以 Windows 为准。macOS / Linux 暂未纳入构建验证（Wails v3 仍处 beta，交叉构建未验证）；数据目录代码本身跨平台，数据库路径规则对三个系统同样成立。
+
 ### 环境要求
 
+- Windows 10/11
 - Go 1.25+
 - Node.js（含 pnpm）
 - [wails3 CLI](https://v3.wails.io/docs/next/gettingstarted/installation/)（版本需与 `go.mod` 匹配）
@@ -90,6 +95,10 @@ wails3 build
 ```
 
 > 构建流水线会自动生成前端产物（`frontend/dist`）与 TS 绑定，无需手动干预。
+
+### 版本号约定
+
+应用版本统一维护在 `build/config.yml` 的 `info.version`；更新后运行 `wails3 task common:update:build-assets` 同步 `build/` 下的安装包与资源清单，再提交两者。
 
 ### 测试
 

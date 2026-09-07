@@ -117,50 +117,61 @@ func Open(path string) (*Store, error) {
 		}
 	}
 	s := &Store{db: db}
-	if err := s.migrate(); err != nil {
+	fresh, err := s.migrate()
+	if err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("store migrate: %w", err)
 	}
-	if err := s.seed(); err != nil {
+	if err := s.seed(fresh); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("store seed: %w", err)
 	}
 	return s, nil
 }
 
-func (s *Store) migrate() error {
+// migrate applies pending schema migrations. fresh reports whether the
+// database was just created (no schema_version row before migrating) — the
+// transactional version bump makes this exact, and seed() uses it to plant
+// the default activities only once.
+func (s *Store) migrate() (fresh bool, err error) {
 	if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`); err != nil {
-		return fmt.Errorf("create meta: %w", err)
+		return false, fmt.Errorf("create meta: %w", err)
 	}
 	var version int
 	row := s.db.QueryRow(`SELECT value FROM meta WHERE key='schema_version'`)
 	switch err := row.Scan(&version); {
 	case errors.Is(err, sql.ErrNoRows):
-		version = 0
+		fresh, version = true, 0
 	case err != nil:
-		return fmt.Errorf("read schema_version: %w", err)
+		return false, fmt.Errorf("read schema_version: %w", err)
 	}
 	for v := version; v < len(migrations); v++ {
 		tx, err := s.db.Begin()
 		if err != nil {
-			return fmt.Errorf("begin migration %d: %w", v+1, err)
+			return fresh, fmt.Errorf("begin migration %d: %w", v+1, err)
 		}
 		if _, err := tx.Exec(migrations[v]); err != nil {
 			_ = tx.Rollback()
-			return fmt.Errorf("apply migration %d: %w", v+1, err)
+			return fresh, fmt.Errorf("apply migration %d: %w", v+1, err)
 		}
 		if _, err := tx.Exec(`INSERT INTO meta(key,value) VALUES('schema_version',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, fmt.Sprint(v+1)); err != nil {
 			_ = tx.Rollback()
-			return fmt.Errorf("bump schema_version: %w", err)
+			return fresh, fmt.Errorf("bump schema_version: %w", err)
 		}
 		if err := tx.Commit(); err != nil {
-			return fmt.Errorf("commit migration %d: %w", v+1, err)
+			return fresh, fmt.Errorf("commit migration %d: %w", v+1, err)
 		}
 	}
-	return nil
+	return fresh, nil
 }
 
-func (s *Store) seed() error {
+// seed inserts the default activities on a freshly created database only.
+// Existing databases never re-seed: a user who deleted every activity must
+// not see the defaults resurrect on the next launch.
+func (s *Store) seed(fresh bool) error {
+	if !fresh {
+		return nil
+	}
 	var count int
 	if err := s.db.QueryRow(`SELECT COUNT(*) FROM activities`).Scan(&count); err != nil {
 		return fmt.Errorf("seed count activities: %w", err)

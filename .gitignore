@@ -36,6 +36,7 @@ pnpm-debug.log*
 # ---- 本机工具 ----
 .task
 .pi
+.zcode/
 .vscode/
 .idea/
 

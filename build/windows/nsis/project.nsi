@@ -19,11 +19,11 @@ Unicode true
 ####
 ## The following information is taken from the wails_tools.nsh file, but they can be overwritten here.
 ####
-## !define INFO_PROJECTNAME    "my-project" # Default "Miku_Chrono"
-## !define INFO_COMPANYNAME    "My Company" # Default "Miku"
-## !define INFO_PRODUCTNAME    "My Product Name" # Default "Miku Chrono"
-## !define INFO_PRODUCTVERSION "1.0.0"     # Default "0.1.0"
-## !define INFO_COPYRIGHT      "(c) Now, My Company" # Default "© 2026, My Company"
+## !define INFO_PROJECTNAME    "miku-chrono" # Default "Miku_Chrono"
+## !define INFO_COMPANYNAME    "Miku Chrono" # Default "Miku Chrono"
+## !define INFO_PRODUCTNAME    "Miku Chrono" # Default "Miku Chrono"
+## !define INFO_PRODUCTVERSION "0.1.0"       # Default "0.1.0"
+## !define INFO_COPYRIGHT      "(c) 2026, Miku Chrono" # Default "© 2026, Miku Chrono"
 ###
 ## !define PRODUCT_EXECUTABLE  "Application.exe"      # Default "${INFO_PROJECTNAME}.exe"
 ## !define UNINST_KEY_NAME     "UninstKeyInRegistry"  # Default "${INFO_COMPANYNAME}${INFO_PRODUCTNAME}"

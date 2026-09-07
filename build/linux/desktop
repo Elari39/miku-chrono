@@ -1,13 +1,13 @@
 [Desktop Entry]
 Version=1.0
 Name=Miku Chrono
-Comment=Multi-activity check-in timer
+Comment=多活动打卡计时桌面应用
 # The Exec line includes %u to pass the URL to the application
-Exec=/usr/local/bin/miku_chrono.exe %u
+Exec=/usr/local/bin/miku-chrono %u
 Terminal=false
 Type=Application
-Icon=miku_chrono.exe
+Icon=miku-chrono
 Categories=Utility;
-StartupWMClass=miku_chrono.exe
+StartupWMClass=miku-chrono
 
  

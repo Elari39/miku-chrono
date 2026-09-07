@@ -60,9 +60,11 @@ export function applyTimerState(state: TimerStateView, st: TimerState): void {
  * the whole seconds passed since it was taken. Ticks project from the latest
  * backend snapshot instead of incrementing a counter, so paused schedulers,
  * system sleep or missed callbacks catch up on the next tick instead of
- * leaving the display behind (MC-007).
+ * leaving the display behind (MC-007). A rollback of the system clock (now
+ * before the snapshot) keeps the base: the next backend snapshot re-anchors
+ * the projection.
  */
 export function projectElapsed(baseSeconds: number, snapshotAtMs: number, nowMs: number): number {
-  if (snapshotAtMs <= 0) return baseSeconds;
-  return Math.max(0, baseSeconds + Math.floor((nowMs - snapshotAtMs) / 1000));
+  if (snapshotAtMs <= 0 || nowMs < snapshotAtMs) return baseSeconds;
+  return baseSeconds + Math.floor((nowMs - snapshotAtMs) / 1000);
 }

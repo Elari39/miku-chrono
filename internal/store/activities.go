@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"mikuchrono/internal/models"
@@ -17,6 +18,50 @@ var ErrValidation = errors.New("validation")
 
 func validationf(format string, args ...any) error {
 	return fmt.Errorf("%w: %s", ErrValidation, fmt.Sprintf(format, args...))
+}
+
+// validHexColor matches the #RRGGBB palette the frontend's color picker offers.
+var validHexColor = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
+
+// validateActivity enforces the shared create/update rules on a in place: a
+// non-empty trimmed name, an optional color that must be a #RRGGBB hex value
+// (empty falls back to the default), a daily goal within 0..1440 minutes and
+// a non-negative sort order.
+func validateActivity(a *models.Activity) error {
+	a.Name = strings.TrimSpace(a.Name)
+	if a.Name == "" {
+		return validationf("活动名称不能为空")
+	}
+	if a.Color == "" {
+		a.Color = "#cc785c"
+	} else if !validHexColor.MatchString(a.Color) {
+		return validationf("颜色格式不正确，需为 #RRGGBB 十六进制色值")
+	}
+	if a.DailyGoalMinutes < 0 || a.DailyGoalMinutes > 1440 {
+		return validationf("每日目标分钟数需在 0 到 1440 之间")
+	}
+	if a.SortOrder < 0 {
+		return validationf("排序值不能为负数")
+	}
+	return nil
+}
+
+// categoryExists reports whether a.CategoryID (nil means 未分类) references a
+// stored category, so callers get a uniform validation error instead of the
+// raw SQLite foreign-key text.
+func (s *Store) categoryExists(id *int64) (bool, error) {
+	if id == nil {
+		return true, nil
+	}
+	var one int
+	err := s.db.QueryRow(`SELECT 1 FROM categories WHERE id = ?`, *id).Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("check category %d: %w", *id, err)
+	}
+	return true, nil
 }
 
 func scanActivity(row interface{ Scan(...any) error }) (models.Activity, error) {
@@ -72,14 +117,15 @@ func (s *Store) GetActivity(id int64) (models.Activity, error) {
 	return a, nil
 }
 
-// CreateActivity inserts a new activity.
+// CreateActivity validates and inserts a new activity.
 func (s *Store) CreateActivity(a models.Activity) (models.Activity, error) {
-	a.Name = strings.TrimSpace(a.Name)
-	if a.Name == "" {
-		return a, validationf("活动名称不能为空")
+	if err := validateActivity(&a); err != nil {
+		return a, err
 	}
-	if a.Color == "" {
-		a.Color = "#cc785c"
+	if ok, err := s.categoryExists(a.CategoryID); err != nil {
+		return a, err
+	} else if !ok {
+		return a, validationf("分类不存在")
 	}
 	now := NowString()
 	var categoryID any
@@ -99,11 +145,16 @@ func (s *Store) CreateActivity(a models.Activity) (models.Activity, error) {
 	return a, nil
 }
 
-// UpdateActivity updates name/color/icon/goal/sort/archived for an activity.
+// UpdateActivity validates and updates name/color/icon/goal/sort/archived for
+// an activity.
 func (s *Store) UpdateActivity(a models.Activity) error {
-	a.Name = strings.TrimSpace(a.Name)
-	if a.Name == "" {
-		return validationf("活动名称不能为空")
+	if err := validateActivity(&a); err != nil {
+		return err
+	}
+	if ok, err := s.categoryExists(a.CategoryID); err != nil {
+		return err
+	} else if !ok {
+		return validationf("分类不存在")
 	}
 	var categoryID any
 	if a.CategoryID != nil {
@@ -177,7 +228,9 @@ func (s *Store) ListEntries(f models.EntryFilter) (models.EntryList, error) {
 		if err != nil {
 			return models.EntryList{}, err
 		}
-		where = append(where, "e.ended_at >= ? AND e.started_at < ?")
+		// Half-open overlap [started_at, ended_at): a record ending exactly
+		// at the range start occupies none of it and must not show up.
+		where = append(where, "e.ended_at > ? AND e.started_at < ?")
 		args = append(args, fromStart, toExcl)
 	} else {
 		if f.FromDate != "" {
