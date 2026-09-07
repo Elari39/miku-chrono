@@ -71,14 +71,17 @@ func TestValidateRangeMinimumOneSecond(t *testing.T) {
 
 	// 300ms would truncate to duration_seconds = 0 and poison the day/streak
 	// aggregates, so it is rejected outright.
-	if _, err := s.CreateManualEntry(1, "2025-09-02T10:00:00.300+08:00", "2025-09-02T10:00:00.600+08:00", "", now); err == nil {
+	start300 := time.Date(2025, 9, 2, 10, 0, 0, 300_000_000, time.Local).Format("2006-01-02T15:04:05.000Z07:00")
+	end600 := time.Date(2025, 9, 2, 10, 0, 0, 600_000_000, time.Local).Format("2006-01-02T15:04:05.000Z07:00")
+	if _, err := s.CreateManualEntry(1, start300, end600, "", now); err == nil {
 		t.Fatal("sub-second range must be rejected")
 	} else if !strings.Contains(err.Error(), "时长至少 1 秒") {
 		t.Fatalf("unexpected validation error: %v", err)
 	}
 
 	// Exactly one second is the shortest acceptable range and stores as 1s.
-	e, err := s.CreateManualEntry(1, "2025-09-02T10:00:00+08:00", "2025-09-02T10:00:01+08:00", "", now)
+	oneSecEnd := time.Date(2025, 9, 2, 10, 0, 1, 0, time.Local).Format(time.RFC3339)
+	e, err := s.CreateManualEntry(1, localRFC3339(2025, time.September, 2, 10, 0), oneSecEnd, "", now)
 	if err != nil {
 		t.Fatalf("one-second entry: %v", err)
 	}

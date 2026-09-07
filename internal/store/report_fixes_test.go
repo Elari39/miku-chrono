@@ -295,15 +295,15 @@ func TestHalfOpenOverlapBoundaries(t *testing.T) {
 	now := time.Date(2025, 9, 5, 12, 0, 0, 0, time.Local)
 
 	// Ends exactly at 09-02 midnight: 3600s all on 09-01.
-	if _, err := s.CreateManualEntry(1, "2025-09-01T23:00:00+08:00", "2025-09-02T00:00:00+08:00", "", now); err != nil {
+	if _, err := s.CreateManualEntry(1, localRFC3339(2025, time.September, 1, 23, 0), localRFC3339(2025, time.September, 2, 0, 0), "", now); err != nil {
 		t.Fatal(err)
 	}
 	// Starts exactly at 09-02 midnight: 1800s on 09-02.
-	if _, err := s.CreateManualEntry(2, "2025-09-02T00:00:00+08:00", "2025-09-02T00:30:00+08:00", "", now); err != nil {
+	if _, err := s.CreateManualEntry(2, localRFC3339(2025, time.September, 2, 0, 0), localRFC3339(2025, time.September, 2, 0, 30), "", now); err != nil {
 		t.Fatal(err)
 	}
 	// Crosses midnight: 600s on each day.
-	if _, err := s.CreateManualEntry(3, "2025-09-01T23:50:00+08:00", "2025-09-02T00:10:00+08:00", "", now); err != nil {
+	if _, err := s.CreateManualEntry(3, localRFC3339(2025, time.September, 1, 23, 50), localRFC3339(2025, time.September, 2, 0, 10), "", now); err != nil {
 		t.Fatal(err)
 	}
 

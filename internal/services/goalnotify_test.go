@@ -86,13 +86,11 @@ func TestOverviewStreaksPerActivity(t *testing.T) {
 
 	now := time.Now()
 	today := store.Today(now)
-	yesterday, err := store.AddDays(today, -1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Yesterday: a fixed morning hour, always in the past. Today: anchored
-	// to now so the no-future rule holds at any hour of the day.
-	if _, err := st.CreateManualEntry(1, yesterday+"T09:00:00+08:00", yesterday+"T10:00:00+08:00", "", now); err != nil {
+	// Yesterday: a fixed morning hour, always in the past (machine-local, so
+	// the day attribution holds in any timezone). Today: anchored to now so
+	// the no-future rule holds at any hour of the day.
+	y9 := time.Date(now.Year(), now.Month(), now.Day(), 9, 0, 0, 0, time.Local).AddDate(0, 0, -1)
+	if _, err := st.CreateManualEntry(1, y9.Format(time.RFC3339), y9.Add(time.Hour).Format(time.RFC3339), "", now); err != nil {
 		t.Fatalf("record yesterday: %v", err)
 	}
 	todayEntry, err := st.CreateManualEntry(1, store.FormatTime(now.Add(-time.Minute)), store.FormatTime(now), "", now)

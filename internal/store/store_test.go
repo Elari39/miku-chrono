@@ -21,6 +21,15 @@ func newTestStore(t *testing.T) *Store {
 	return s
 }
 
+// localRFC3339 renders a machine-local wall-clock time as an RFC3339 string
+// with the machine's own offset — the shape manual-entry inputs arrive in.
+// Deriving test timestamps from time.Local (instead of pinning "+08:00")
+// keeps day-attribution and past/future assertions valid on machines in any
+// timezone, CI runners included.
+func localRFC3339(y int, m time.Month, d, hh, mm int) string {
+	return time.Date(y, m, d, hh, mm, 0, 0, time.Local).Format(time.RFC3339)
+}
+
 func TestSeedOnFirstRun(t *testing.T) {
 	s := newTestStore(t)
 	acts, err := s.ListActivities(true)
@@ -136,22 +145,22 @@ func TestStartArchivedActivityRejected(t *testing.T) {
 func TestManualEntryValidation(t *testing.T) {
 	s := newTestStore(t)
 	now := time.Date(2025, 9, 2, 12, 0, 0, 0, time.Local)
-	base := "2025-09-02T10:00:00+08:00"
+	base := localRFC3339(2025, time.September, 2, 10, 0)
 
 	// end <= start rejected
-	if _, err := s.CreateManualEntry(1, "2025-09-02T10:00:00+08:00", "2025-09-02T10:00:00+08:00", "", now); err == nil {
+	if _, err := s.CreateManualEntry(1, base, base, "", now); err == nil {
 		t.Fatal("end == start must fail")
 	}
 	// end in the future rejected
-	if _, err := s.CreateManualEntry(1, base, "2025-09-02T13:00:00+08:00", "", now); err == nil {
+	if _, err := s.CreateManualEntry(1, base, localRFC3339(2025, time.September, 2, 13, 0), "", now); err == nil {
 		t.Fatal("future end must fail")
 	}
 	// unknown activity rejected
-	if _, err := s.CreateManualEntry(999, base, "2025-09-02T11:00:00+08:00", "", now); err == nil {
+	if _, err := s.CreateManualEntry(999, base, localRFC3339(2025, time.September, 2, 11, 0), "", now); err == nil {
 		t.Fatal("unknown activity must fail")
 	}
 	// valid entry
-	e, err := s.CreateManualEntry(1, base, "2025-09-02T11:30:00+08:00", "  测试备注  ", now)
+	e, err := s.CreateManualEntry(1, base, localRFC3339(2025, time.September, 2, 11, 30), "  测试备注  ", now)
 	if err != nil {
 		t.Fatalf("valid manual entry: %v", err)
 	}
@@ -161,7 +170,7 @@ func TestManualEntryValidation(t *testing.T) {
 
 	// update path: extend to one hour
 	e.StartedAt = base
-	e.EndedAt = "2025-09-02T11:00:00+08:00"
+	e.EndedAt = localRFC3339(2025, time.September, 2, 11, 0)
 	if err := s.UpdateEntry(e, now); err != nil {
 		t.Fatalf("update: %v", err)
 	}
@@ -175,8 +184,8 @@ func TestCrossMidnightBelongsToStartDay(t *testing.T) {
 	s := newTestStore(t)
 	now := time.Date(2025, 9, 2, 12, 0, 0, 0, time.Local)
 
-	// 23:50 → next day 00:10
-	if _, err := s.CreateManualEntry(1, "2025-09-01T23:50:00+08:00", "2025-09-02T00:10:00+08:00", "", now); err != nil {
+	// 23:50 → next day 00:10 (machine-local wall clock)
+	if _, err := s.CreateManualEntry(1, localRFC3339(2025, time.September, 1, 23, 50), localRFC3339(2025, time.September, 2, 0, 10), "", now); err != nil {
 		t.Fatal(err)
 	}
 	sets, err := s.ActiveDaySets()
@@ -199,7 +208,7 @@ func TestDeleteActivityCascadesEntries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.CreateManualEntry(created.ID, "2025-09-01T10:00:00+08:00", "2025-09-01T11:00:00+08:00", "", now); err != nil {
+	if _, err := s.CreateManualEntry(created.ID, localRFC3339(2025, time.September, 1, 10, 0), localRFC3339(2025, time.September, 1, 11, 0), "", now); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.DeleteActivity(created.ID); err != nil {
@@ -222,10 +231,10 @@ func TestListEntriesFilterAndPaging(t *testing.T) {
 		act        int64
 		start, end string
 	}{
-		{1, "2025-09-01T09:00:00+08:00", "2025-09-01T10:00:00+08:00"},
-		{2, "2025-09-01T11:00:00+08:00", "2025-09-01T12:00:00+08:00"},
-		{1, "2025-09-03T09:00:00+08:00", "2025-09-03T10:30:00+08:00"},
-		{3, "2025-09-04T09:00:00+08:00", "2025-09-04T10:00:00+08:00"},
+		{1, localRFC3339(2025, time.September, 1, 9, 0), localRFC3339(2025, time.September, 1, 10, 0)},
+		{2, localRFC3339(2025, time.September, 1, 11, 0), localRFC3339(2025, time.September, 1, 12, 0)},
+		{1, localRFC3339(2025, time.September, 3, 9, 0), localRFC3339(2025, time.September, 3, 10, 30)},
+		{3, localRFC3339(2025, time.September, 4, 9, 0), localRFC3339(2025, time.September, 4, 10, 0)},
 	}
 	for _, f := range fixtures {
 		if _, err := s.CreateManualEntry(f.act, f.start, f.end, "", now); err != nil {
@@ -250,10 +259,10 @@ func TestListEntriesFilterAndPaging(t *testing.T) {
 	if len(paged.Items) != 2 || paged.Total != 4 {
 		t.Fatalf("paging: len=%d total=%d", len(paged.Items), paged.Total)
 	}
-	// Newest first: the 11:00+08:00 record, stored as its UTC instant since
+	// Newest first: the 11:00 local record, stored as its UTC instant since
 	// schema v3.
 	got, err := time.Parse(time.RFC3339, paged.Items[0].StartedAt)
-	if err != nil || !got.Equal(time.Date(2025, 9, 1, 3, 0, 0, 0, time.UTC)) {
+	if err != nil || !got.Equal(time.Date(2025, 9, 1, 11, 0, 0, 0, time.Local)) {
 		t.Fatalf("newest-first order broken: %+v err=%v", paged.Items[0], err)
 	}
 }
@@ -262,10 +271,10 @@ func TestDayBucketsAndTotals(t *testing.T) {
 	s := newTestStore(t)
 	now := time.Date(2025, 9, 2, 12, 0, 0, 0, time.Local)
 
-	if _, err := s.CreateManualEntry(1, "2025-09-01T09:00:00+08:00", "2025-09-01T10:00:00+08:00", "", now); err != nil {
+	if _, err := s.CreateManualEntry(1, localRFC3339(2025, time.September, 1, 9, 0), localRFC3339(2025, time.September, 1, 10, 0), "", now); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.CreateManualEntry(2, "2025-09-01T11:00:00+08:00", "2025-09-01T11:30:00+08:00", "", now); err != nil {
+	if _, err := s.CreateManualEntry(2, localRFC3339(2025, time.September, 1, 11, 0), localRFC3339(2025, time.September, 1, 11, 30), "", now); err != nil {
 		t.Fatal(err)
 	}
 	buckets, err := s.DayBuckets("2025-09-01", "2025-09-01")

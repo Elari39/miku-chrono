@@ -12,6 +12,15 @@ import (
 	"mikuchrono/internal/store"
 )
 
+// localRFC3339 renders a machine-local wall-clock time as an RFC3339 string
+// with the machine's own offset — the shape manual-entry inputs arrive in.
+// Deriving test timestamps from time.Local (instead of pinning "+08:00")
+// keeps the seeded rows' past/future relationships and day attribution valid
+// on machines in any timezone, CI runners included.
+func localRFC3339(y int, m time.Month, d, hh, mm int) string {
+	return time.Date(y, m, d, hh, mm, 0, 0, time.Local).Format(time.RFC3339)
+}
+
 // seedExportStore plants a category plus a few entries — including one with
 // CSV-hostile note content — and returns the store.
 func seedExportStore(t *testing.T) *store.Store {
@@ -30,9 +39,9 @@ func seedExportStore(t *testing.T) *store.Store {
 		start, end string
 		note       string
 	}{
-		{1, "2025-09-04T09:00:00+08:00", "2025-09-04T10:00:00+08:00", "plain"},
-		{2, "2025-09-05T09:00:00+08:00", "2025-09-05T10:30:00+08:00", "note, with \"quotes\" and,\nnewline"},
-		{1, "2025-09-03T23:50:00+08:00", "2025-09-04T00:10:00+08:00", "跨午夜"},
+		{1, localRFC3339(2025, time.September, 4, 9, 0), localRFC3339(2025, time.September, 4, 10, 0), "plain"},
+		{2, localRFC3339(2025, time.September, 5, 9, 0), localRFC3339(2025, time.September, 5, 10, 30), "note, with \"quotes\" and,\nnewline"},
+		{1, localRFC3339(2025, time.September, 3, 23, 50), localRFC3339(2025, time.September, 4, 0, 10), "跨午夜"},
 	} {
 		if _, err := st.CreateManualEntry(f.act, f.start, f.end, f.note, now); err != nil {
 			t.Fatal(err)

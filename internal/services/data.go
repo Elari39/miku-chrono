@@ -69,6 +69,12 @@ func (s *DataService) savePath(defaultName, filterName, pattern string) (string,
 	if err != nil {
 		return "", err
 	}
+	// The data dir normally exists (store.Open created it), but it can be
+	// removed while the app runs (fresh profile, manual cleanup) — recreate
+	// it so the fallback export cannot die on an opaque missing-path error.
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", fmt.Errorf("create data dir: %w", err)
+	}
 	return filepath.Join(dir, defaultName), nil
 }
 

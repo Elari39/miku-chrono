@@ -112,7 +112,7 @@ func TestDeleteCategoryUncategorizesActivities(t *testing.T) {
 	// Deleting the category must NOT delete the activity or its data; it
 	// only clears the link (ON DELETE SET NULL).
 	now := time.Date(2025, 9, 1, 12, 0, 0, 0, time.Local)
-	if _, err := s.CreateManualEntry(act.ID, "2025-09-01T10:00:00+08:00", "2025-09-01T11:00:00+08:00", "", now); err != nil {
+	if _, err := s.CreateManualEntry(act.ID, localRFC3339(2025, time.September, 1, 10, 0), localRFC3339(2025, time.September, 1, 11, 0), "", now); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.DeleteCategory(cat.ID); err != nil {
