@@ -143,12 +143,13 @@ func (s *BallService) GetBallPosition() (models.BallPosition, error) {
 	return pos, nil
 }
 
-// SaveBallPosition persists the ball position across restarts.
+// SaveBallPosition persists the ball position across restarts, in one
+// transaction so the pair can never be half-written by a crash mid-drag.
 func (s *BallService) SaveBallPosition(x, y int) error {
-	if err := s.Store.SetSetting(keyBallX, strconv.Itoa(x)); err != nil {
-		return err
-	}
-	return s.Store.SetSetting(keyBallY, strconv.Itoa(y))
+	return s.Store.SetSettings([][2]string{
+		{keyBallX, strconv.Itoa(x)},
+		{keyBallY, strconv.Itoa(y)},
+	})
 }
 
 // GetCloseAction returns the stored close-button behaviour. The empty string
@@ -243,19 +244,16 @@ func (s *BallService) GetMainWindowBounds() (models.WindowBounds, error) {
 	return b, nil
 }
 
-// SaveMainWindowBounds persists the main-window geometry across restarts.
+// SaveMainWindowBounds persists the main-window geometry across restarts, in
+// one transaction so a crash mid-drag can never leave a mixed geometry (new X
+// with old height).
 func (s *BallService) SaveMainWindowBounds(x, y, width, height int) error {
-	for _, kv := range [][2]string{
+	return s.Store.SetSettings([][2]string{
 		{keyWinX, strconv.Itoa(x)},
 		{keyWinY, strconv.Itoa(y)},
 		{keyWinW, strconv.Itoa(width)},
 		{keyWinH, strconv.Itoa(height)},
-	} {
-		if err := s.Store.SetSetting(kv[0], kv[1]); err != nil {
-			return err
-		}
-	}
-	return nil
+	})
 }
 
 // --- internal helpers (menu callbacks / window hooks) ---

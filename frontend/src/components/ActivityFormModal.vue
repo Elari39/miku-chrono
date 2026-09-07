@@ -3,6 +3,7 @@ import { ref, watch } from "vue";
 import { ActivityService, type Activity, type Category } from "../lib/api";
 import { useToast } from "../composables/useToast";
 import { errorMessage } from "../lib/errors";
+import { normalizeDailyGoal } from "../lib/goal";
 import { PALETTE } from "../lib/palette";
 import ColorSwatchPicker from "./ColorSwatchPicker.vue";
 import Modal from "./Modal.vue";
@@ -55,6 +56,9 @@ async function save() {
     formError.value = "活动名称不能为空";
     return;
   }
+  // Normalize before sending: an emptied number input would otherwise carry
+  // a raw string into the Go int field and fail as a JSON decode error.
+  form.value.dailyGoalMinutes = normalizeDailyGoal(form.value.dailyGoalMinutes);
   const payload: Activity = props.activity
     ? { ...props.activity, ...form.value }
     : ({ ...form.value } as Activity);

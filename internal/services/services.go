@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"mikuchrono/internal/applog"
 	"mikuchrono/internal/models"
 	"mikuchrono/internal/store"
 )
@@ -165,11 +166,20 @@ func (s *TimerService) CachedState(now time.Time) (models.TimerState, error) {
 	}
 	st := s.cached.st
 	if st.Running {
-		secs := int64(now.Sub(s.cached.at).Seconds())
-		st.ElapsedSeconds += secs
-		st.SessionElapsedSeconds += secs
+		st.ElapsedSeconds += elapsedSince(s.cached.at, now)
+		st.SessionElapsedSeconds += elapsedSince(s.cached.at, now)
 	}
 	return st, nil
+}
+
+// elapsedSince renders the whole seconds from t to now, clamped to zero: a
+// system clock set back between the snapshot and now must not project a
+// negative elapsed time into the tray/UI state.
+func elapsedSince(t, now time.Time) int64 {
+	if d := int64(now.Sub(t).Seconds()); d > 0 {
+		return d
+	}
+	return 0
 }
 
 // Start begins timing the given activity, closing any running timer first
@@ -190,12 +200,15 @@ func (s *TimerService) Start(activityID int64) (models.TimerState, error) {
 	if err != nil {
 		return st, err
 	}
-	// Fill in display fields for the newly started timer.
-	a, err := s.Store.GetActivity(activityID)
-	if err != nil {
-		return st, err
+	// Fill in display fields for the newly started timer. A read failure must
+	// not undo the (already committed) start: degrade to empty display fields
+	// — the UI falls back to its generic "计时中" text — instead of returning
+	// an error that would make the frontend show idle while the timer runs.
+	if a, err := s.Store.GetActivity(activityID); err == nil {
+		st.ActivityName, st.ActivityColor = a.Name, a.Color
+	} else {
+		applog.Printf("timer start: load activity %d: %v", activityID, err)
 	}
-	st.ActivityName, st.ActivityColor = a.Name, a.Color
 	s.remember(st, now)
 	if s.Emit != nil {
 		s.Emit(EventTimerStarted)

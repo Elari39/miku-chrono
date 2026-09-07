@@ -112,8 +112,11 @@ func (s *Store) ClearEntries() error {
 }
 
 // validateRange parses two RFC3339 timestamps and enforces the manual-entry
-// rules: end strictly after start, and end not in the future (a one-minute
-// clock-skew tolerance is granted).
+// rules: end strictly after start by at least one second, and end not in the
+// future (a one-minute clock-skew tolerance is granted). The one-second floor
+// exists because durations are stored truncated to whole seconds — anything
+// shorter would persist as duration_seconds = 0 and break the "every entry
+// lasts at least one second" invariant the day/streak aggregates rely on.
 func validateRange(startedAt, endedAt string, now time.Time) (time.Time, time.Time, int64, error) {
 	start, err := ParseTime(startedAt)
 	if err != nil {
@@ -125,6 +128,9 @@ func validateRange(startedAt, endedAt string, now time.Time) (time.Time, time.Ti
 	}
 	if !end.After(start) {
 		return time.Time{}, time.Time{}, 0, validationf("结束时间必须晚于开始时间")
+	}
+	if end.Sub(start) < time.Second {
+		return time.Time{}, time.Time{}, 0, validationf("时长至少 1 秒")
 	}
 	if end.After(now.Add(time.Minute)) {
 		return time.Time{}, time.Time{}, 0, validationf("结束时间不能晚于现在")

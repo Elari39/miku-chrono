@@ -51,6 +51,16 @@ const layout = computed(() =>
 
 const ticks = computed(() => niceTicks(layout.value.maxTotal));
 const allEmpty = computed(() => layout.value.bars.every((b) => b.total === 0));
+
+// Screen-reader summary: the hover tooltip is a deliberately HTML overlay
+// (SVG <title> never rendered in WebView2), so the SVG exposes a one-line
+// description; per-bar labels and values render as real SVG text.
+const chartLabel = computed(() => {
+  const withData = layout.value.bars.filter((b) => b.total > 0).length;
+  return withData === 0
+    ? "专注时长柱状图，这个时段还没有记录"
+    : `专注时长柱状图，${layout.value.bars.length} 个时段中 ${withData} 个有记录`;
+});
 const showValues = computed(
   () => layout.value.bars.length > 0 && layout.value.bars.length <= VALUE_LABEL_MAX_BARS,
 );
@@ -83,6 +93,8 @@ const tipStyle = computed(() => {
         :height="BAR_CHART_LAYOUT.H"
         :viewBox="`0 0 ${layout.width} ${BAR_CHART_LAYOUT.H}`"
         class="block"
+        role="img"
+        :aria-label="chartLabel"
       >
         <!-- horizontal gridlines + right-hand duration scale -->
         <g v-for="t in ticks" :key="`tick-${t}`">

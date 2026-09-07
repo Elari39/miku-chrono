@@ -37,6 +37,16 @@ type Logger struct {
 	path string
 	f    *os.File
 	size int64
+	// closed latches Close: afterwards Printf stays a silent no-op instead of
+	// reopening the file behind the caller's back.
+	closed bool
+	// rotateAfter postpones the next rotation attempt: when rotation fails
+	// (e.g. path+".old" held open by an editor or antivirus on Windows) the
+	// file keeps growing, and retrying on every line would churn a
+	// close/rename/open per write while dropping every line in between.
+	// Rotation is retried only once the file outgrows this threshold (zero
+	// means "no failed attempt pending").
+	rotateAfter int64
 }
 
 // Open returns a Logger appending to path; the parent directory must exist.
@@ -60,6 +70,7 @@ func (l *Logger) Close() error {
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	l.closed = true
 	if l.f == nil {
 		return nil
 	}
@@ -78,21 +89,61 @@ func (l *Logger) Printf(format string, args ...any) {
 	line := time.Now().Format("2006-01-02 15:04:05 ") + fmt.Sprintf(format, args...) + "\n"
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.f == nil {
+	if l.closed {
 		return
 	}
-	if l.size > maxLogBytes {
-		l.rotateLocked()
+	if l.f == nil {
+		l.reopenLocked()
+		if l.f == nil {
+			return
+		}
 	}
-	n, _ := l.f.WriteString(line)
+	if l.size > maxLogBytes && (l.rotateAfter == 0 || l.size > l.rotateAfter) {
+		l.rotateLocked()
+		if l.f == nil {
+			return
+		}
+	}
+	n, err := l.f.WriteString(line)
 	l.size += int64(n)
+	if err != nil || n < len(line) {
+		// The handle may have gone bad (file moved, share violation): one
+		// reopen-and-retry beats losing the line silently.
+		l.reopenLocked()
+		if l.f != nil {
+			if n, err := l.f.WriteString(line); err == nil {
+				l.size += int64(n)
+			}
+		}
+	}
+}
+
+// reopenLocked opens path in append mode, re-syncing size from the file so
+// the byte count stays honest after any external change.
+func (l *Logger) reopenLocked() {
+	if l.f != nil {
+		_ = l.f.Close()
+		l.f = nil
+	}
+	f, err := os.OpenFile(l.path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return
+	}
+	l.f = f
+	if info, err := f.Stat(); err == nil {
+		l.size = info.Size()
+	}
 }
 
 // rotateLocked swaps the active file for path+".old" and opens a fresh one.
-// On any failure it falls back to appending to the original handle: losing
-// rotation beats losing logs entirely.
+// On any failure it falls back to appending to the original handle — losing
+// rotation beats losing logs entirely — and postpones the next attempt until
+// the file outgrows the cap again, so a persistently locked ".old" cannot
+// turn every subsequent write into a failing rotation cycle.
 func (l *Logger) rotateLocked() {
 	_ = l.f.Close()
+	l.f = nil
+	l.rotateAfter = 0
 	if err := os.Rename(l.path, l.path+".old"); err == nil {
 		f, err := os.OpenFile(l.path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
 		if err == nil {
@@ -101,10 +152,8 @@ func (l *Logger) rotateLocked() {
 			return
 		}
 	}
-	if f, err := os.OpenFile(l.path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); err == nil {
-		l.f = f
-		if info, err := f.Stat(); err == nil {
-			l.size = info.Size()
-		}
+	l.reopenLocked()
+	if l.f != nil {
+		l.rotateAfter = l.size + maxLogBytes
 	}
 }

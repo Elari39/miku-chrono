@@ -129,7 +129,7 @@ func (g *GoalNotifier) check() {
 		}
 		total := todaySecs[a.ID]
 		if running != nil && running.ActivityID == a.ID {
-			total += running.SessionElapsedSeconds
+			total += sessionSecondsToday(running.StartedAt, time.Now())
 		}
 		if total < int64(a.DailyGoalMinutes)*60 {
 			continue
@@ -156,4 +156,28 @@ func (g *GoalNotifier) check() {
 			fmt.Sprintf("「%s」今日累计已达 %d 分钟目标 🎉", a.Name, a.DailyGoalMinutes),
 		)
 	}
+}
+
+// sessionSecondsToday returns the portion of the running session that belongs
+// to the local day of now. A session started before midnight must not inflate
+// today's total with seconds the recorded data attributes to yesterday — the
+// day-splitting (store.loadDayPieces) clips every entry to each day's own
+// slice, so the live add-on has to match that convention or a goal can fire
+// on the wrong day's bucket. startedAt is a stored RFC3339 timestamp; an
+// unparseable value contributes nothing (the next tick retries).
+func sessionSecondsToday(startedAt string, now time.Time) int64 {
+	start, err := store.ParseTime(startedAt)
+	if err != nil {
+		return 0
+	}
+	start = start.Local()
+	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	if now.Before(dayStart) {
+		// Clock rolled back past midnight: nothing safely belongs to "today".
+		return 0
+	}
+	if start.Before(dayStart) {
+		start = dayStart
+	}
+	return elapsedSince(start, now)
 }

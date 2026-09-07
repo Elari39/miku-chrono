@@ -1,21 +1,25 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useTimer } from "../composables/useTimer";
-import { formatWhen } from "../lib/format";
+import { useToast } from "../composables/useToast";
+import { formatDuration, formatWhen } from "../lib/format";
+import { errorMessage } from "../lib/errors";
 import DurationText from "./DurationText.vue";
 
 const { state, stop } = useTimer();
+const { success, error } = useToast();
 
 const visible = computed(() => state.loaded && state.running);
 
 async function onStop() {
   try {
     const entry = await stop();
-    // Entry details surface via toast in the view that owns refresh; here we
-    // only guard errors.
-    void entry;
+    if (entry) {
+      success(`已记录 ${formatDuration(entry.durationSeconds)} · ${entry.activityName}`);
+    }
+    // Aggregates reload via the version bump from the timer:stopped event.
   } catch (err) {
-    console.error(err);
+    error(errorMessage(err));
   }
 }
 </script>

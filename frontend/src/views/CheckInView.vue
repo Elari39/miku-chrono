@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import {
   ActivityService,
   CategoryService,
@@ -10,6 +10,7 @@ import {
 } from "../lib/api";
 import { useTimer } from "../composables/useTimer";
 import { useVersionedLoad } from "../composables/useVersionedLoad";
+import { useToday } from "../composables/useToday";
 import { useToast } from "../composables/useToast";
 import { formatDuration } from "../lib/format";
 import { errorMessage } from "../lib/errors";
@@ -22,6 +23,7 @@ import TodayTotal from "../components/TodayTotal.vue";
 import EmptyState from "../components/EmptyState.vue";
 
 const { state, running, start, stop } = useTimer();
+const { today } = useToday();
 const { success, error } = useToast();
 
 const stats = ref<ActivityStat[]>([]);
@@ -80,6 +82,10 @@ const { loading, reload } = useVersionedLoad(async (isCurrent) => {
     error("加载活动列表失败");
   }
 });
+
+// Past-midnight rollover: today's totals and streaks belong to a new day
+// even though no timer event fires, so reload once the local date changes.
+watch(today, () => void reload());
 
 async function onStart(id: number) {
   try {

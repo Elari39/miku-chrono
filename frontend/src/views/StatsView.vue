@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import {
   EntryService,
   StatsService,
@@ -10,6 +10,7 @@ import {
 } from "../lib/api";
 import { useToast } from "../composables/useToast";
 import { useVersionedLoad } from "../composables/useVersionedLoad";
+import { useToday } from "../composables/useToday";
 import { dateStr, formatDay, formatDurationLong, todayStr } from "../lib/format";
 import {
   buildTimelineSegments,
@@ -34,10 +35,18 @@ import EntryRow from "../components/EntryRow.vue";
 import Timeline24h from "../components/Timeline24h.vue";
 
 const { error } = useToast();
+const { today } = useToday();
 
 // ---- period state: granularity + an anchor date inside the period ----
 const gran = ref<Granularity>("day");
 const anchor = ref(todayStr());
+
+// At midnight the anchor must move with the date — but only while the user
+// is still looking at the current period; a hand-picked historical anchor
+// must not jump. The anchor change triggers the period reload below.
+watch(today, (t, prev) => {
+  if (anchor.value === prev) anchor.value = t;
+});
 
 const range = computed(() => ({
   start: periodStart(gran.value, anchor.value),
@@ -138,19 +147,23 @@ async function loadPeriod(isCurrent: () => boolean) {
 }
 
 // Period data reloads on granularity/anchor changes and on timer activity;
-// streaks are range-independent.
+// streaks are range-independent but still flip at midnight (the backend
+// anchors the current streak on the live local date).
 const { loading } = useVersionedLoad(loadPeriod, {
   triggers: [gran, anchor],
 });
-useVersionedLoad(async (isCurrent) => {
-  try {
-    const s = await StatsService.Streaks({ activityId: null });
-    if (!isCurrent()) return;
-    streak.value = s ?? { current: 0, longest: 0 };
-  } catch (err) {
-    console.error(err);
-  }
-});
+useVersionedLoad(
+  async (isCurrent) => {
+    try {
+      const s = await StatsService.Streaks({ activityId: null });
+      if (!isCurrent()) return;
+      streak.value = s ?? { current: 0, longest: 0 };
+    } catch (err) {
+      console.error(err);
+    }
+  },
+  { triggers: [today] },
+);
 
 // ---- navigation ----
 const QUICK_LABELS: Record<Granularity, string> = {
@@ -176,7 +189,9 @@ function onDayPick(e: Event) {
 // ---- summary cards ----
 const metric3 = computed(() => {
   if (gran.value === "month" || gran.value === "year") {
-    const days = elapsedDaysInPeriod(gran.value, anchor.value, todayStr());
+    // Reactive `today`: the "elapsed days" denominator must re-derive at
+    // midnight, not stay frozen on the mount-day date.
+    const days = elapsedDaysInPeriod(gran.value, anchor.value, today.value);
     const avg = days > 0 ? Math.round(grandTotal.value / days) : 0;
     return {
       label: "日均时长",
@@ -215,6 +230,7 @@ const participantsSub = computed(() =>
           :key="g"
           class="cursor-pointer rounded-md px-3 py-1.5 text-sm transition-colors"
           :class="gran === g ? 'bg-primary font-medium text-white' : 'text-muted hover:text-body'"
+          :aria-pressed="gran === g"
           @click="switchGran(g)"
         >
           {{ GRANULARITY_LABELS[g] }}

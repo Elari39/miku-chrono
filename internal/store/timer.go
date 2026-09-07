@@ -23,6 +23,16 @@ const (
 	keyTimerSeconds  = "timer_base_seconds"
 )
 
+// elapsedSeconds renders the whole seconds from start to now, clamped to
+// zero: a system clock set back between start and now must neither shrink
+// the persisted chain base nor surface negative elapsed time to the UI.
+func elapsedSeconds(start, now time.Time) int64 {
+	if d := int64(now.Sub(start).Seconds()); d > 0 {
+		return d
+	}
+	return 0
+}
+
 // rowQuerier abstracts *sql.DB and *sql.Tx so chain reads work both inside
 // transactions and on the bare store (the store keeps a single connection,
 // so nested db reads inside a tx would deadlock).
@@ -102,7 +112,7 @@ func (s *Store) GetTimerState(now time.Time) (models.TimerState, error) {
 		return st, fmt.Errorf("get timer state: %w", err)
 	}
 	if t, err := ParseTime(startedAt); err == nil {
-		session := int64(now.Sub(t).Seconds())
+		session := elapsedSeconds(t, now)
 		st.ElapsedSeconds = base + session
 		st.SessionElapsedSeconds = session
 	}
@@ -240,7 +250,7 @@ func (s *Store) StopTimer(now time.Time) (*models.Entry, error) {
 		return nil, fmt.Errorf("stop timer: read chain: %w", err)
 	}
 	if start, perr := ParseTime(runStarted); perr == nil {
-		base += int64(now.Sub(start).Seconds())
+		base += elapsedSeconds(start, now)
 	}
 	if err := writeChain(tx, runActivity, base); err != nil {
 		return nil, fmt.Errorf("stop timer: write chain: %w", err)
@@ -292,7 +302,7 @@ func (s *Store) StopAndDeleteActivity(id int64, now time.Time) (entry *models.En
 			return nil, false, fmt.Errorf("stop and delete activity: read chain: %w", rerr)
 		}
 		if start, perr := ParseTime(runStarted); perr == nil {
-			base += int64(now.Sub(start).Seconds())
+			base += elapsedSeconds(start, now)
 		}
 		if werr := writeChain(tx, runActivity, base); werr != nil {
 			return nil, false, fmt.Errorf("stop and delete activity: write chain: %w", werr)

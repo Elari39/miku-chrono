@@ -74,6 +74,14 @@ const { loading, reload } = useVersionedLoad(async (isCurrent) => {
     if (!isCurrent()) return;
     entries.value = list?.items ?? [];
     total.value = list?.total ?? 0;
+    // Deleting the last entry of the last page (or a shrunken filter result)
+    // can strand the view past the final page: fall back to the last valid
+    // page and reload once; the seq guard keeps this re-entry safe.
+    const lastPage = Math.max(1, Math.ceil(total.value / pageSize));
+    if (page.value > lastPage) {
+      page.value = lastPage;
+      void reload();
+    }
   } catch (err) {
     console.error(err);
     error("加载记录失败");
@@ -182,13 +190,30 @@ onMounted(() => {
     <div class="mb-6 flex flex-wrap items-end justify-between gap-3">
       <h1 class="font-display text-2xl font-semibold text-ink">记录</h1>
       <div class="flex flex-wrap items-center gap-2">
-        <select v-model="filterActivityId" class="mc-input w-32" @change="applyFilter">
+        <select
+          v-model="filterActivityId"
+          class="mc-input w-32"
+          aria-label="按活动筛选"
+          @change="applyFilter"
+        >
           <option value="">全部活动</option>
           <option v-for="a in activities" :key="a.id" :value="a.id">{{ a.name }}</option>
         </select>
-        <input v-model="filterFrom" type="date" class="mc-input w-36" @change="applyFilter" />
+        <input
+          v-model="filterFrom"
+          type="date"
+          class="mc-input w-36"
+          aria-label="开始日期"
+          @change="applyFilter"
+        />
         <span class="text-muted">–</span>
-        <input v-model="filterTo" type="date" class="mc-input w-36" @change="applyFilter" />
+        <input
+          v-model="filterTo"
+          type="date"
+          class="mc-input w-36"
+          aria-label="结束日期"
+          @change="applyFilter"
+        />
         <button class="mc-btn-primary" @click="openCreate">＋ 补录</button>
       </div>
     </div>

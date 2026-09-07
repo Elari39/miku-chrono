@@ -27,15 +27,24 @@ jobs:
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
 
+      # The frontend must build before any Go compilation: main.go embeds
+      # all:frontend/dist (gitignored, absent on a fresh checkout), so a
+      # fresh checkout would fail go vet/test before this step existed.
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Frontend build
+        working-directory: frontend
+        run: pnpm build
+
       - name: Go vet
         run: go vet ./...
 
       - name: Go test
-        run: go test ./...
-
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: pnpm install --frozen-lockfile
+        # -race covers the concurrent paths (tray pump vs DB reads, persist
+        # throttles, goal notifier) that a plain run never checks.
+        run: go test -race ./...
 
       - name: Frontend lint
         working-directory: frontend
@@ -44,7 +53,3 @@ jobs:
       - name: Frontend test
         working-directory: frontend
         run: pnpm test
-
-      - name: Frontend build
-        working-directory: frontend
-        run: pnpm build

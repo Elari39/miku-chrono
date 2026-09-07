@@ -4,6 +4,9 @@ import { DataService, BallService } from "../lib/api";
 import { useToast } from "../composables/useToast";
 import { errorMessage } from "../lib/errors";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
+// Single source of truth for the displayed version: package.json also feeds
+// build/config.yml and the Windows version info at release time.
+import { version as appVersion } from "../../package.json";
 
 const { success, error } = useToast();
 
@@ -236,7 +239,7 @@ onMounted(() => {
     </div>
 
     <p class="mt-8 text-center text-xs text-muted">
-      Miku Chrono v0.1.0 · Wails v3 · {{ new Date().getFullYear() }}
+      Miku Chrono v{{ appVersion }} · Wails v3 · {{ new Date().getFullYear() }}
     </p>
 
     <ConfirmDialog

@@ -34,6 +34,16 @@ const legend = computed(() => {
 
 const recordedSecs = computed(() => props.segments.reduce((sum, s) => sum + s.secs, 0));
 
+// Screen-reader summary: the SVG itself is mouse-hover-only (the tooltip is
+// a deliberately HTML overlay — SVG <title> never rendered in WebView2), so
+// the chart exposes a one-line description instead; the legend below carries
+// the per-activity breakdown as real text.
+const chartLabel = computed(() =>
+  props.segments.length === 0
+    ? "24 小时时间轴，今天还没有记录"
+    : `24 小时时间轴，共 ${props.segments.length} 段记录，合计 ${formatDuration(recordedSecs.value)}`,
+);
+
 const hm = (min: number) => {
   const m = Math.min(1440, Math.max(0, Math.round(min)));
   return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
@@ -54,7 +64,14 @@ const tipStyle = computed(() => {
 
 <template>
   <div ref="trackEl" class="relative" @pointerleave="hovered = null">
-    <svg :width="width" :height="52" :viewBox="`0 0 ${width} 52`" class="block">
+    <svg
+      :width="width"
+      :height="52"
+      :viewBox="`0 0 ${width} 52`"
+      class="block"
+      role="img"
+      :aria-label="chartLabel"
+    >
       <!-- track = unrecorded time -->
       <rect
         :x="TRACK_X"

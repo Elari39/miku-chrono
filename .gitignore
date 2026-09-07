@@ -33,6 +33,7 @@ pnpm-debug.log*
 # ---- 本机工具 ----
 .task
 .pi
+.pi-lens.json
 .zcode/
 .vscode/
 .idea/

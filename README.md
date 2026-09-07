@@ -114,7 +114,7 @@ go vet ./...
 go test ./...         # store / services / applog 共 60+ 个测试
 cd frontend
 pnpm lint             # ESLint
-pnpm test             # vitest：lib 纯函数、组件与 composables
+pnpm test             # vitest：lib 纯函数、组件与 composables（90+ 个用例）
 ```
 
 推送与 PR 由 GitHub Actions（`.github/workflows/ci.yml`，Windows runner）自动执行以上检查。

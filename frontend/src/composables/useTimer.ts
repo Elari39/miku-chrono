@@ -18,6 +18,13 @@ const state = reactive<TimerStateView>(createTimerStateView());
 /** Bumped on every start/stop so views know when to refresh aggregates. */
 const version = ref(0);
 
+/** Set when the latest GetState failed; views can surface the outage. */
+const loadFailed = ref(false);
+
+// Sequence guard: of all issued GetState calls only the most recent one may
+// commit its response, so a slow stale fetch cannot overwrite a newer one.
+let refreshSeq = 0;
+
 // Elapsed-time snapshot: the authoritative values from the backend plus the
 // local time they were received. Ticks project from this baseline.
 let baseElapsed = 0;
@@ -55,18 +62,34 @@ function apply(st: TimerState) {
   else stopTicker();
 }
 
-/** Fetch the authoritative state from the backend. */
+/** Fetch the authoritative state from the backend. Out-of-order responses
+ * are dropped: only the latest issued fetch may land. */
 async function refresh(): Promise<void> {
+  const my = ++refreshSeq;
   try {
-    apply(await TimerService.GetState());
+    const st = await TimerService.GetState();
+    if (my !== refreshSeq) return;
+    loadFailed.value = false;
+    apply(st);
   } catch (err) {
     console.error("GetState failed", err);
-    state.loaded = true;
+    // Keep the last known snapshot — faking a loaded idle state would
+    // confidently display "未在计时 / 00:00" while the real backend state is
+    // unknown. loadFailed lets callers surface the outage instead.
+    if (my === refreshSeq) loadFailed.value = true;
   }
 }
 
+// start() applies the Start result locally; the Go broadcast then fires
+// timer:started here too and its handler would re-fetch the identical state.
+// Starts are mutually exclusive, so a started event cannot originate
+// elsewhere while this timer runs — within a second of a local start the
+// re-fetch is skipped, but the version bump (aggregate reload) still runs.
+let lastLocalStart = 0;
+
 /** Start timing an activity (mutually exclusive; auto-closes the previous). */
 async function start(activityId: number): Promise<void> {
+  lastLocalStart = Date.now();
   apply(await TimerService.Start(activityId));
   // Aggregate refresh is driven by the app-wide timer:started event (the Go
   // service broadcasts after each successful change) so every window reloads
@@ -84,7 +107,7 @@ async function stop(): Promise<Entry | null> {
 const running = computed(() => state.running);
 
 export function useTimer() {
-  return { state, running, version, refresh, start, stop };
+  return { state, running, version, loadFailed, refresh, start, stop };
 }
 
 // Kick off the initial fetch as soon as the module is imported.
@@ -98,7 +121,7 @@ Events.On("timer:stopped", () => {
   version.value++;
 });
 Events.On("timer:started", () => {
-  void refresh();
+  if (Date.now() - lastLocalStart >= 1000) void refresh();
   version.value++;
 });
 

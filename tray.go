@@ -99,16 +99,21 @@ func pumpMenuState(tray *application.SystemTray, ball *services.BallService, tra
 				tooltip = "Miku Chrono · 未在计时"
 				timerLabel = "开始计时"
 			}
-			showLabel := "显示主窗口"
-			if ball.MainWindow != nil && ball.MainWindow.IsVisible() {
-				showLabel = "隐藏主窗口"
-			}
-			sig := tooltip + "|" + timerLabel + "|" + showLabel
-			if sig == last {
-				return
-			}
-			last = sig
+			// Everything that touches window/menu state — IsVisible and the
+			// label writes, plus the last-signature dedupe — runs inside
+			// InvokeSync, matching the threading discipline of the
+			// single-instance callback; only the DB-backed state read above
+			// stays off the main thread.
 			application.InvokeSync(func() {
+				showLabel := "显示主窗口"
+				if ball.MainWindow != nil && ball.MainWindow.IsVisible() {
+					showLabel = "隐藏主窗口"
+				}
+				sig := tooltip + "|" + timerLabel + "|" + showLabel
+				if sig == last {
+					return
+				}
+				last = sig
 				tray.SetTooltip(tooltip)
 				trayTimerItem.SetLabel(timerLabel)
 				trayShowItem.SetLabel(showLabel)

@@ -89,14 +89,17 @@ export function QuitApp(): $CancellablePromise<void> {
 }
 
 /**
- * SaveBallPosition persists the ball position across restarts.
+ * SaveBallPosition persists the ball position across restarts, in one
+ * transaction so the pair can never be half-written by a crash mid-drag.
  */
 export function SaveBallPosition(x: number, y: number): $CancellablePromise<void> {
     return $Call.ByID(3758582116, x, y);
 }
 
 /**
- * SaveMainWindowBounds persists the main-window geometry across restarts.
+ * SaveMainWindowBounds persists the main-window geometry across restarts, in
+ * one transaction so a crash mid-drag can never leave a mixed geometry (new X
+ * with old height).
  */
 export function SaveMainWindowBounds(x: number, y: number, width: number, height: number): $CancellablePromise<void> {
     return $Call.ByID(1767140842, x, y, width, height);

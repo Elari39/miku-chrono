@@ -146,28 +146,27 @@ func DefaultPath() (string, error) {
 	return filepath.Join(dir, "mikuchrono.db"), nil
 }
 
+// dsnPragmas are applied through DSN query parameters instead of a post-open
+// Exec. The driver parses them per connection, so a connection the pool has
+// to rebuild (driver ErrBadConn) keeps them too — most importantly
+// foreign_keys: with MaxOpenConns(1) a replaced connection silently dropping
+// it would disable ON DELETE CASCADE and orphan every entry of a deleted
+// activity. The modernc driver splits the query off any plain path at the
+// first '?' (no file: prefix needed).
+const dsnPragmas = "?_busy_timeout=5000&_foreign_keys=1&_journal_mode=WAL"
+
 // Open opens (creating if needed) the database at path, runs pending
 // migrations and seeds default activities on first run.
 func Open(path string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, fmt.Errorf("create data dir: %w", err)
 	}
-	db, err := sql.Open("sqlite", path)
+	db, err := sql.Open("sqlite", path+dsnPragmas)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
 	// One connection serializes writes; no SQLITE_BUSY juggling needed.
 	db.SetMaxOpenConns(1)
-	for _, pragma := range []string{
-		"PRAGMA journal_mode=WAL",
-		"PRAGMA busy_timeout=5000",
-		"PRAGMA foreign_keys=ON",
-	} {
-		if _, err := db.Exec(pragma); err != nil {
-			db.Close()
-			return nil, fmt.Errorf("apply pragma: %w", err)
-		}
-	}
 	s := &Store{db: db}
 	fresh, err := s.migrate()
 	if err != nil {
@@ -285,6 +284,33 @@ func (s *Store) SetSetting(key, value string) error {
 		key, value,
 	); err != nil {
 		return fmt.Errorf("set setting %q: %w", key, err)
+	}
+	return nil
+}
+
+// SetSettings writes several key/value settings into the meta table in one
+// transaction, so a crash mid-write can never leave a half-updated group
+// (e.g. a window's new X next to its old height). The caller should group
+// keys that are only meaningful together.
+func (s *Store) SetSettings(pairs [][2]string) error {
+	if len(pairs) == 0 {
+		return nil
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("set settings: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, kv := range pairs {
+		if _, err := tx.Exec(
+			`INSERT INTO meta(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+			kv[0], kv[1],
+		); err != nil {
+			return fmt.Errorf("set setting %q: %w", kv[0], err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("set settings: commit: %w", err)
 	}
 	return nil
 }
