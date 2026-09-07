@@ -43,7 +43,7 @@ export function ExportJSON(): $CancellablePromise<string> {
 }
 
 /**
- * OpenDataDir opens the data directory in Windows Explorer.
+ * OpenDataDir opens the data directory in the platform's file manager.
  */
 export function OpenDataDir(): $CancellablePromise<void> {
     return $Call.ByID(1725990917);

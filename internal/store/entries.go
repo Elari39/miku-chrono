@@ -27,10 +27,13 @@ func (s *Store) CreateManualEntry(activityID int64, startedAt, endedAt, note str
 		return e, validationf("备注最多 500 字")
 	}
 	ts := FormatTime(now)
+	// local_day is the start day in the writer's wall clock (the parsed
+	// input keeps its offset) — the attribution the day filters and streaks
+	// key on.
 	res, err := s.db.Exec(
-		`INSERT INTO entries(activity_id, started_at, ended_at, duration_seconds, note, source, created_at, updated_at)
-		 VALUES(?,?,?,?,?,?,?,?)`,
-		activityID, FormatTime(start), FormatTime(end), dur, note, "manual", ts, ts,
+		`INSERT INTO entries(activity_id, started_at, ended_at, duration_seconds, note, source, local_day, created_at, updated_at)
+		 VALUES(?,?,?,?,?,?,?,?,?)`,
+		activityID, FormatTime(start), FormatTime(end), dur, note, "manual", Today(start), ts, ts,
 	)
 	if err != nil {
 		return e, fmt.Errorf("create manual entry: %w", err)
@@ -55,8 +58,8 @@ func (s *Store) UpdateEntry(e models.Entry, now time.Time) error {
 		return validationf("备注最多 500 字")
 	}
 	res, err := s.db.Exec(
-		`UPDATE entries SET activity_id=?, started_at=?, ended_at=?, duration_seconds=?, note=?, updated_at=? WHERE id=?`,
-		e.ActivityID, FormatTime(start), FormatTime(end), dur, e.Note, FormatTime(now), e.ID,
+		`UPDATE entries SET activity_id=?, started_at=?, ended_at=?, duration_seconds=?, note=?, local_day=?, updated_at=? WHERE id=?`,
+		e.ActivityID, FormatTime(start), FormatTime(end), dur, e.Note, Today(start), FormatTime(now), e.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("update entry %d: %w", e.ID, err)

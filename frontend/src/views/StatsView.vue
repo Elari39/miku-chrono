@@ -10,7 +10,7 @@ import {
 } from "../lib/api";
 import { useToast } from "../composables/useToast";
 import { useVersionedLoad } from "../composables/useVersionedLoad";
-import { formatDay, formatDurationLong, formatWhen, todayStr } from "../lib/format";
+import { dateStr, formatDay, formatDurationLong, todayStr } from "../lib/format";
 import {
   buildTimelineSegments,
   dayPortionSeconds,
@@ -30,6 +30,7 @@ import {
 import BarChart from "../components/BarChart.vue";
 import DurationText from "../components/DurationText.vue";
 import EmptyState from "../components/EmptyState.vue";
+import EntryRow from "../components/EntryRow.vue";
 import Timeline24h from "../components/Timeline24h.vue";
 
 const { error } = useToast();
@@ -69,6 +70,16 @@ const peak = computed(() => peakBucket(buckets.value));
 // Day view shows the overlap-filtered list, so cross-midnight entries are
 // clipped to the displayed day's own slice on the timeline.
 const timelineSegments = computed(() => buildTimelineSegments(dayEntries.value, range.value.start));
+
+// Cross-midnight badge: either endpoint falls outside the displayed day.
+// Both endpoints are parsed offset-aware via Date — slicing the stored
+// string would read the UTC calendar date since the v3 storage migration.
+function isCrossDay(e: Entry): boolean {
+  return (
+    dateStr(new Date(e.startedAt)) !== range.value.start ||
+    dateStr(new Date(e.endedAt)) !== range.value.start
+  );
+}
 // Entry point for the full list when the day view truncates at 200 items.
 const recordsLink = computed(() => ({
   path: "/records",
@@ -333,42 +344,13 @@ const participantsSub = computed(() =>
         </div>
       </div>
       <div v-if="dayEntries.length" class="mc-card divide-y divide-hairline overflow-hidden">
-        <div
+        <EntryRow
           v-for="e in dayEntries"
           :key="e.id"
-          class="flex items-center gap-4 px-5 py-3 hover:bg-surface-card/50"
-        >
-          <span class="h-8 w-1 rounded-full" :style="{ backgroundColor: e.activityColor }" />
-          <div class="min-w-0 flex-1">
-            <div class="flex items-center gap-2">
-              <span class="text-sm font-medium text-ink">{{ e.activityName }}</span>
-              <span
-                class="rounded-full px-1.5 py-0.5 text-[10px]"
-                :class="
-                  e.source === 'timer'
-                    ? 'bg-primary/10 text-primary'
-                    : 'bg-accent-teal/15 text-accent-teal'
-                "
-                >{{ e.source === "timer" ? "计时" : "补录" }}</span
-              >
-              <span
-                v-if="
-                  e.startedAt.slice(0, 10) !== range.start || e.endedAt.slice(0, 10) !== range.start
-                "
-                class="rounded-full bg-black/5 px-1.5 py-0.5 text-[10px] text-muted"
-                >跨天</span
-              >
-            </div>
-            <div class="mt-0.5 truncate text-xs text-muted">
-              {{ formatWhen(e.startedAt) }} → {{ formatWhen(e.endedAt) }}
-              <span v-if="e.note" class="ml-1">· {{ e.note }}</span>
-            </div>
-          </div>
-          <DurationText
-            :seconds="dayPortionSeconds(e, range.start)"
-            class="text-sm font-medium text-body"
-          />
-        </div>
+          :entry="e"
+          :duration-seconds="dayPortionSeconds(e, range.start)"
+          :cross-day="isCrossDay(e)"
+        />
       </div>
     </template>
   </div>

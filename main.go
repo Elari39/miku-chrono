@@ -134,12 +134,24 @@ func main() {
 	ballService.Timer = timerService
 	ballService.StartPositionPersist()
 	ballService.StartMainWindowPersist()
+	// Platform-dependent hooks (Explorer, native save dialog).
+	wireDesktopShell(app, dataService)
+
 	// Broadcast timer state changes from the shared success paths so every
 	// window (ball, tray, other views) refreshes right after start/stop/clear.
+	// A timer:stopped can also originate outside TimerService (a
+	// settings-page clear, a stop-and-delete), so the tray pump's snapshot
+	// cache is dropped on that event to keep its projection honest.
 	broadcast := func(event string) { app.Event.Emit(event) }
-	activityService.Emit = broadcast
-	timerService.Emit = broadcast
-	dataService.Emit = broadcast
+	notifyTimer := func(event string) {
+		broadcast(event)
+		if event == services.EventTimerStopped {
+			timerService.Invalidate()
+		}
+	}
+	activityService.Emit = notifyTimer
+	timerService.Emit = notifyTimer
+	dataService.Emit = notifyTimer
 
 	// Closing the main window hides it (default) or quits the app, per the
 	// stored close_action. The hook cancels the close first; a real quit is

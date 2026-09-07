@@ -2,6 +2,7 @@
 import { onMounted, ref } from "vue";
 import { DataService, BallService } from "../lib/api";
 import { useToast } from "../composables/useToast";
+import { errorMessage } from "../lib/errors";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
 
 const { success, error } = useToast();
@@ -30,7 +31,7 @@ async function openDir() {
   try {
     await DataService.OpenDataDir();
   } catch (err) {
-    error(String((err as Error).message ?? err));
+    error(errorMessage(err));
   }
 }
 
@@ -39,7 +40,7 @@ async function exportJSON() {
     const path = await DataService.ExportJSON();
     if (path) success(`已导出：${path}`);
   } catch (err) {
-    error(String((err as Error).message ?? err));
+    error(errorMessage(err));
   }
 }
 
@@ -48,7 +49,7 @@ async function exportCSV() {
     const path = await DataService.ExportCSV();
     if (path) success(`已导出：${path}`);
   } catch (err) {
-    error(String((err as Error).message ?? err));
+    error(errorMessage(err));
   }
 }
 
@@ -59,7 +60,7 @@ async function doClear() {
     await DataService.ClearEntries();
     success("所有计时记录已清空");
   } catch (err) {
-    error(String((err as Error).message ?? err));
+    error(errorMessage(err));
   }
 }
 
@@ -82,7 +83,7 @@ async function toggleBall() {
     }
     ballVisible.value = !ballVisible.value;
   } catch (err) {
-    error(String((err as Error).message ?? err));
+    error(errorMessage(err));
   }
 }
 
@@ -92,7 +93,7 @@ async function setCloseAction(action: "hide" | "quit") {
     closeAction.value = action;
     success(action === "quit" ? "已保存：关闭主窗口时直接退出" : "已保存：关闭主窗口时隐藏到后台");
   } catch (err) {
-    error(String((err as Error).message ?? err));
+    error(errorMessage(err));
   }
 }
 
@@ -111,7 +112,7 @@ async function toggleAutostart() {
     autostart.value = !autostart.value;
     success(autostart.value ? "已开启开机自启动" : "已关闭开机自启动");
   } catch (err) {
-    error(String((err as Error).message ?? err));
+    error(errorMessage(err));
   }
 }
 
@@ -121,7 +122,7 @@ async function toggleGoalNotify() {
     goalNotify.value = !goalNotify.value;
     success(goalNotify.value ? "已开启每日目标提醒" : "已关闭每日目标提醒");
   } catch (err) {
-    error(String((err as Error).message ?? err));
+    error(errorMessage(err));
   }
 }
 

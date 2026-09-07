@@ -33,7 +33,7 @@ func validateActivity(a *models.Activity) error {
 		return validationf("活动名称不能为空")
 	}
 	if a.Color == "" {
-		a.Color = "#cc785c"
+		a.Color = DefaultColor
 	} else if !validHexColor.MatchString(a.Color) {
 		return validationf("颜色格式不正确，需为 #RRGGBB 十六进制色值")
 	}
@@ -201,7 +201,14 @@ func scanEntry(row interface{ Scan(...any) error }) (models.Entry, error) {
 	return e, err
 }
 
+// entryCols are the joined columns of one entry row. The '#cc785c' fallback
+// mirrors store.DefaultColor; the literal stays because migrations are the
+// only place SQL may embed it as data.
 const entryCols = `e.id, e.activity_id, COALESCE(a.name,''), COALESCE(a.color,'#cc785c'), e.started_at, e.ended_at, e.duration_seconds, e.note, e.source`
+
+// maxPageSize caps one ListEntries page. The UI asks for exactly this; the
+// full-database exports use ListAllEntries instead.
+const maxPageSize = 200
 
 // ListEntries returns a page of entries matching the filter, newest first.
 // The default FromDate/ToDate semantics keep entries whose start day lies in
@@ -233,12 +240,15 @@ func (s *Store) ListEntries(f models.EntryFilter) (models.EntryList, error) {
 		where = append(where, "e.ended_at > ? AND e.started_at < ?")
 		args = append(args, fromStart, toExcl)
 	} else {
+		// Start-day membership via the indexed local_day column (schema v3):
+		// slicing started_at would both miss the index and — before the UTC
+		// migration — compare date parts across mixed offsets.
 		if f.FromDate != "" {
-			where = append(where, "substr(e.started_at,1,10) >= ?")
+			where = append(where, "e.local_day >= ?")
 			args = append(args, f.FromDate)
 		}
 		if f.ToDate != "" {
-			where = append(where, "substr(e.started_at,1,10) <= ?")
+			where = append(where, "e.local_day <= ?")
 			args = append(args, f.ToDate)
 		}
 	}
@@ -249,10 +259,10 @@ func (s *Store) ListEntries(f models.EntryFilter) (models.EntryList, error) {
 		page = 1
 	}
 	if size < 1 {
-		size = 200
+		size = maxPageSize
 	}
-	if size > 200 {
-		size = 200
+	if size > maxPageSize {
+		size = maxPageSize
 	}
 
 	var total int64

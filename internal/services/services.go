@@ -6,6 +6,7 @@ package services
 import (
 	"fmt"
 	"sort"
+	"sync"
 	"time"
 
 	"mikuchrono/internal/models"
@@ -91,6 +92,10 @@ func (s *CategoryService) Delete(id int64) error {
 	return s.Store.DeleteCategory(id)
 }
 
+// cacheTTL bounds how long CachedState projects elapsed seconds from a
+// snapshot before re-reading the store.
+const cacheTTL = 30 * time.Second
+
 // TimerService owns the at-most-one running timer.
 type TimerService struct {
 	Store *store.Store
@@ -98,11 +103,73 @@ type TimerService struct {
 	// timer events after each successful state change so every window
 	// (floating ball, tray-linked views) refreshes immediately. Nil in tests.
 	Emit func(event string)
+
+	// mu guards cached, the last state read from the store. The tray state
+	// pump projects elapsed seconds from this snapshot once per second
+	// instead of re-reading SQLite every tick (the store keeps a single
+	// serialized connection, so that polling competed with every real
+	// query). Expired or dropped snapshots fall back to one read.
+	mu     sync.Mutex
+	cached *cachedTimerState
+}
+
+// cachedTimerState is a store snapshot plus the local time it was taken;
+// ticks project from the instant.
+type cachedTimerState struct {
+	st models.TimerState
+	at time.Time
+}
+
+// remember installs st as the projection baseline.
+func (s *TimerService) remember(st models.TimerState, at time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.cached = &cachedTimerState{st: st, at: at}
+}
+
+// Invalidate drops the cached state so the next CachedState/GetState
+// re-reads the store. Wired (via the Emit wrapper in main.go) to
+// timer:stopped broadcasts that originate outside this service — a
+// settings-page clear or a stop-and-delete — to keep the projection honest.
+func (s *TimerService) Invalidate() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.cached = nil
 }
 
 // GetState returns the current timer state (running or idle).
 func (s *TimerService) GetState() (models.TimerState, error) {
-	return s.Store.GetTimerState(time.Now())
+	now := time.Now()
+	st, err := s.Store.GetTimerState(now)
+	if err != nil {
+		return st, err
+	}
+	s.remember(st, now)
+	return st, nil
+}
+
+// CachedState returns the current timer state without touching SQLite on
+// the hot path: while the snapshot is fresh the elapsed seconds are
+// projected from it (the same local-projection trick the frontend uses);
+// a missing or expired snapshot falls back to one store read.
+func (s *TimerService) CachedState(now time.Time) (models.TimerState, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.cached == nil || now.Sub(s.cached.at) >= cacheTTL {
+		st, err := s.Store.GetTimerState(now)
+		if err != nil {
+			return st, err
+		}
+		s.cached = &cachedTimerState{st: st, at: now}
+		return st, nil
+	}
+	st := s.cached.st
+	if st.Running {
+		secs := int64(now.Sub(s.cached.at).Seconds())
+		st.ElapsedSeconds += secs
+		st.SessionElapsedSeconds += secs
+	}
+	return st, nil
 }
 
 // Start begins timing the given activity, closing any running timer first
@@ -115,6 +182,7 @@ func (s *TimerService) Start(activityID int64) (models.TimerState, error) {
 	if err != nil {
 		return current, err
 	}
+	s.remember(current, now)
 	if current.Running && current.ActivityID == activityID {
 		return current, nil
 	}
@@ -128,6 +196,7 @@ func (s *TimerService) Start(activityID int64) (models.TimerState, error) {
 		return st, err
 	}
 	st.ActivityName, st.ActivityColor = a.Name, a.Color
+	s.remember(st, now)
 	if s.Emit != nil {
 		s.Emit(EventTimerStarted)
 	}
@@ -138,7 +207,7 @@ func (s *TimerService) Start(activityID int64) (models.TimerState, error) {
 // the accumulated seconds of its earlier sessions forward. It errors when no
 // timer has ever been started (no chain) or the chained activity vanished.
 func (s *TimerService) StartLast() (models.TimerState, error) {
-	st, err := s.Store.GetTimerState(time.Now())
+	st, err := s.GetState()
 	if err != nil {
 		return st, err
 	}
@@ -159,6 +228,9 @@ func (s *TimerService) Stop() (*models.Entry, error) {
 	if err != nil {
 		return entry, err
 	}
+	// The idle state (last-activity fields) is unknown without a read; drop
+	// the snapshot so the next CachedState/GetState re-reads once.
+	s.Invalidate()
 	if s.Emit != nil {
 		s.Emit(EventTimerStopped)
 	}
@@ -211,18 +283,20 @@ func (s *StatsService) Overview() ([]models.ActivityStat, error) {
 	if err != nil {
 		return nil, err
 	}
+	// One grouped query for every activity's active-day set: the overview
+	// reloads on each mount and on every timer start/stop, so a per-activity
+	// full-table scan here would multiply with the history size.
+	sets, err := s.Store.ActiveDaySets()
+	if err != nil {
+		return nil, err
+	}
 	out := make([]models.ActivityStat, 0, len(acts))
 	for _, a := range acts {
-		id := a.ID
-		streak, err := computeStreak(s.Store, &id)
-		if err != nil {
-			return nil, err
-		}
 		out = append(out, models.ActivityStat{
 			Activity:      a,
 			TodaySeconds:  todaySecs[a.ID],
 			TotalSeconds:  totalSecs[a.ID],
-			CurrentStreak: streak.Current,
+			CurrentStreak: StreaksOf(sets[a.ID], today).Current,
 		})
 	}
 	return out, nil
@@ -267,7 +341,21 @@ func (s *StatsService) MonthlyStacked(year int) ([]models.MonthBucket, error) {
 // Streaks returns current and longest consecutive check-in days. A nil
 // activity id means across all activities.
 func (s *StatsService) Streaks(req models.StreakRequest) (models.StreakInfo, error) {
-	return computeStreak(s.Store, req.ActivityID)
+	sets, err := s.Store.ActiveDaySets()
+	if err != nil {
+		return models.StreakInfo{}, err
+	}
+	days := map[string]bool{}
+	if req.ActivityID == nil {
+		for _, set := range sets {
+			for d := range set {
+				days[d] = true
+			}
+		}
+	} else {
+		days = sets[*req.ActivityID]
+	}
+	return StreaksOf(days, store.Today(time.Now())), nil
 }
 
 // Heatmap returns per-day total seconds for the last n days.
@@ -279,15 +367,6 @@ func (s *StatsService) Heatmap(days int) (map[string]int64, error) {
 		days = 366
 	}
 	return s.Store.Heatmap(days, time.Now())
-}
-
-// computeStreak calculates current/longest consecutive check-in days.
-func computeStreak(s *store.Store, activityID *int64) (models.StreakInfo, error) {
-	days, err := s.ActiveDays(activityID)
-	if err != nil {
-		return models.StreakInfo{}, err
-	}
-	return StreaksOf(days, store.Today(time.Now())), nil
 }
 
 // StreaksOf computes streaks from a set of active "YYYY-MM-DD" dates and a

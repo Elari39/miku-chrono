@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -330,10 +331,13 @@ func (s *Store) closeRunningTx(tx *sql.Tx, activityID int64, startedAt string, n
 		return nil, nil
 	}
 	ended := FormatTime(now)
+	// start is the stored UTC instant; the start-day attribution uses the
+	// machine's local calendar (same semantics as the stats day-splitting).
+	localDay := Today(start.Local())
 	res, err := tx.Exec(
-		`INSERT INTO entries(activity_id, started_at, ended_at, duration_seconds, note, source, created_at, updated_at)
-		 VALUES(?,?,?,?,?,?,?,?)`,
-		activityID, startedAt, ended, duration, "", "timer", ended, ended,
+		`INSERT INTO entries(activity_id, started_at, ended_at, duration_seconds, note, source, local_day, created_at, updated_at)
+		 VALUES(?,?,?,?,?,?,?,?,?)`,
+		activityID, startedAt, ended, duration, "", "timer", localDay, ended, ended,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("close session: insert entry: %w", err)
@@ -362,5 +366,5 @@ func (s *Store) closeRunningTx(tx *sql.Tx, activityID int64, startedAt string, n
 
 // isNoRows reports whether err is the database/sql empty-result sentinel.
 func isNoRows(err error) bool {
-	return err != nil && err.Error() == "sql: no rows in result set"
+	return errors.Is(err, sql.ErrNoRows)
 }

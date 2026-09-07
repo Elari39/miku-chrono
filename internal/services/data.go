@@ -5,12 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"mikuchrono/internal/models"
 	"mikuchrono/internal/store"
@@ -23,6 +20,15 @@ type DataService struct {
 	// state may have changed after a destructive clear so every window
 	// refreshes. Nil in tests.
 	Emit func(event string)
+	// OpenDir opens a directory in the platform's file manager (Windows
+	// wiring in main.go). Nil reports the platform as unsupported — the
+	// operation is meaningless outside a desktop shell (tests, a future
+	// mobile shell).
+	OpenDir func(dir string) error
+	// SaveFile asks the user where to save a file and returns the chosen
+	// path ("" when cancelled). Nil falls back to the data directory so
+	// exports stay usable in tests and headless shells.
+	SaveFile func(defaultName, filterName, pattern string) (string, error)
 }
 
 // DataDir returns the directory holding the SQLite database.
@@ -34,30 +40,27 @@ func (s *DataService) DataDir() (string, error) {
 	return filepath.Dir(path), nil
 }
 
-// OpenDataDir opens the data directory in Windows Explorer.
+// OpenDataDir opens the data directory in the platform's file manager.
 func (s *DataService) OpenDataDir() error {
 	dir, err := s.DataDir()
 	if err != nil {
 		return err
 	}
-	return exec.Command("explorer", dir).Start()
+	if s.OpenDir == nil {
+		return fmt.Errorf("当前平台不支持打开数据目录")
+	}
+	return s.OpenDir(dir)
 }
 
-// savePath asks the user where to save a file via the native save dialog.
-// When no dialog is available (e.g. tests) it falls back to the data dir.
+// savePath asks the user where to save a file via the injected SaveFile
+// hook. When no hook is available (e.g. tests) it falls back to the data dir.
 func (s *DataService) savePath(defaultName, filterName, pattern string) (string, error) {
-	if app := application.Get(); app != nil {
-		dialog := app.Dialog.SaveFile()
-		dialog.SetFilename(defaultName)
-		dialog.AddFilter(filterName, pattern)
-		path, err := dialog.PromptForSingleSelection()
+	if s.SaveFile != nil {
+		path, err := s.SaveFile(defaultName, filterName, pattern)
 		if err != nil {
 			return "", fmt.Errorf("save dialog: %w", err)
 		}
-		if path != "" {
-			return path, nil
-		}
-		return "", nil // user cancelled
+		return path, nil
 	}
 	dir, err := s.DataDir()
 	if err != nil {
@@ -118,12 +121,21 @@ func (s *DataService) ExportCSV() (string, error) {
 	var buf bytes.Buffer
 	buf.WriteString("\xEF\xBB\xBF") // UTF-8 BOM so Excel opens Chinese text correctly
 	buf.WriteString("activity,started_at,ended_at,duration_seconds,note,source\r\n")
+	// CSV is read by humans/spreadsheets, so timestamps render in the local
+	// wall clock even though storage is UTC since schema v3. The JSON export
+	// stays canonical UTC for machine import.
+	local := func(iso string) string {
+		if t, err := store.ParseTime(iso); err == nil {
+			return t.Local().Format(time.RFC3339)
+		}
+		return iso
+	}
 	for _, e := range entries {
 		buf.WriteString(csvField(e.ActivityName))
 		buf.WriteByte(',')
-		buf.WriteString(csvField(e.StartedAt))
+		buf.WriteString(csvField(local(e.StartedAt)))
 		buf.WriteByte(',')
-		buf.WriteString(csvField(e.EndedAt))
+		buf.WriteString(csvField(local(e.EndedAt)))
 		buf.WriteByte(',')
 		fmt.Fprintf(&buf, "%d", e.DurationSeconds)
 		buf.WriteByte(',')

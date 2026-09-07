@@ -12,6 +12,7 @@ import { useTimer } from "../composables/useTimer";
 import { useVersionedLoad } from "../composables/useVersionedLoad";
 import { useToast } from "../composables/useToast";
 import { formatDuration, todayStr } from "../lib/format";
+import { errorMessage } from "../lib/errors";
 import ActivityCard from "../components/ActivityCard.vue";
 import ActivityFormModal from "../components/ActivityFormModal.vue";
 import CategoryManagerModal from "../components/CategoryManagerModal.vue";
@@ -94,7 +95,7 @@ async function onStart(id: number) {
   try {
     await start(id);
   } catch (err) {
-    error(String((err as Error).message ?? err).replace(/^\w+:\s*/, ""));
+    error(errorMessage(err));
   }
 }
 
@@ -106,7 +107,7 @@ async function onStop() {
     }
     void reload();
   } catch (err) {
-    error(String((err as Error).message ?? err).replace(/^\w+:\s*/, ""));
+    error(errorMessage(err));
   }
 }
 
@@ -141,7 +142,7 @@ async function setArchived(a: Activity, archived: boolean) {
     success(archived ? "已归档" : "已恢复");
     await reload();
   } catch (err) {
-    error(String((err as Error).message ?? err).replace(/^\w+:\s*/, ""));
+    error(errorMessage(err));
   }
 }
 
@@ -169,7 +170,7 @@ async function doDelete() {
     deleteTarget.value = null;
     await reload();
   } catch (err) {
-    error(String((err as Error).message ?? err).replace(/^\w+:\s*/, ""));
+    error(errorMessage(err));
   }
 }
 </script>

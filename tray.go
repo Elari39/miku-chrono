@@ -59,8 +59,10 @@ func showMainWindow(ball *services.BallService) {
 }
 
 // pumpMenuState keeps the tray tooltip and the tray/ball menu labels in sync
-// with the timer state. Polling once per second is a single tiny read, and
-// it avoids wiring the menus to frontend-triggered events.
+// with the timer state. Each tick projects elapsed seconds from the timer
+// service's in-memory snapshot (CachedState) instead of re-reading SQLite
+// every second; the snapshot re-syncs on state changes and at most once per
+// cache TTL, so out-of-band changes converge without per-tick queries.
 func pumpMenuState(tray *application.SystemTray, ball *services.BallService, trayShowItem, trayTimerItem, ballTimerItem, ballToggleItem *application.MenuItem) {
 	last := ""
 	ticker := time.NewTicker(time.Second)
@@ -69,7 +71,7 @@ func pumpMenuState(tray *application.SystemTray, ball *services.BallService, tra
 		if ball.Timer == nil {
 			continue
 		}
-		st, err := ball.Timer.GetState()
+		st, err := ball.Timer.CachedState(time.Now())
 		if err != nil {
 			continue
 		}

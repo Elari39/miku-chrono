@@ -15,10 +15,30 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as models$0 from "../models/models.js";
 
 /**
+ * CachedState returns the current timer state without touching SQLite on
+ * the hot path: while the snapshot is fresh the elapsed seconds are
+ * projected from it (the same local-projection trick the frontend uses);
+ * a missing or expired snapshot falls back to one store read.
+ */
+export function CachedState(now: string): $CancellablePromise<models$0.TimerState> {
+    return $Call.ByID(2892979220, now);
+}
+
+/**
  * GetState returns the current timer state (running or idle).
  */
 export function GetState(): $CancellablePromise<models$0.TimerState> {
     return $Call.ByID(3943655304);
+}
+
+/**
+ * Invalidate drops the cached state so the next CachedState/GetState
+ * re-reads the store. Wired (via the Emit wrapper in main.go) to
+ * timer:stopped broadcasts that originate outside this service — a
+ * settings-page clear or a stop-and-delete — to keep the projection honest.
+ */
+export function Invalidate(): $CancellablePromise<void> {
+    return $Call.ByID(2074505056);
 }
 
 /**

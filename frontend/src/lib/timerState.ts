@@ -2,8 +2,11 @@
 // useTimer.ts so the logic is unit-testable without touching the Wails
 // runtime. The composable keeps the ticker/window concerns.
 import type { TimerState } from "./api";
+import { DEFAULT_ACTIVITY_COLOR } from "./palette";
 
-export const DEFAULT_ACTIVITY_COLOR = "#cc785c";
+// Re-exported for existing importers; the value lives in palette.ts next to
+// the form color pickers' swatch list.
+export { DEFAULT_ACTIVITY_COLOR };
 
 /** The reactive slice useTimer exposes to views/components. */
 export interface TimerStateView {

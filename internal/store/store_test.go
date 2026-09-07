@@ -179,14 +179,14 @@ func TestCrossMidnightBelongsToStartDay(t *testing.T) {
 	if _, err := s.CreateManualEntry(1, "2025-09-01T23:50:00+08:00", "2025-09-02T00:10:00+08:00", "", now); err != nil {
 		t.Fatal(err)
 	}
-	days, err := s.ActiveDays(nil)
+	sets, err := s.ActiveDaySets()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !days["2025-09-01"] {
-		t.Fatalf("entry must belong to start day 2025-09-01, got %v", days)
+	if sets[1]["2025-09-01"] != true {
+		t.Fatalf("entry must belong to start day 2025-09-01, got %v", sets[1])
 	}
-	if days["2025-09-02"] {
+	if sets[1]["2025-09-02"] {
 		t.Fatal("end day must not be counted")
 	}
 }
@@ -250,8 +250,11 @@ func TestListEntriesFilterAndPaging(t *testing.T) {
 	if len(paged.Items) != 2 || paged.Total != 4 {
 		t.Fatalf("paging: len=%d total=%d", len(paged.Items), paged.Total)
 	}
-	if paged.Items[0].StartedAt != "2025-09-01T11:00:00+08:00" {
-		t.Fatalf("newest-first order broken: %+v", paged.Items[0])
+	// Newest first: the 11:00+08:00 record, stored as its UTC instant since
+	// schema v3.
+	got, err := time.Parse(time.RFC3339, paged.Items[0].StartedAt)
+	if err != nil || !got.Equal(time.Date(2025, 9, 1, 3, 0, 0, 0, time.UTC)) {
+		t.Fatalf("newest-first order broken: %+v err=%v", paged.Items[0], err)
 	}
 }
 

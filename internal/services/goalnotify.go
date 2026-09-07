@@ -22,7 +22,12 @@ const goalNotifyCheckInterval = time.Minute
 // for the stop.
 type GoalNotifier struct {
 	Store *store.Store
-	stop  chan struct{}
+	// Notify shows a system notification. When nil (tests, a future mobile
+	// shell) the package-default showNotification is used, which the
+	// //go:build windows implementation backs with a tray balloon and other
+	// platforms no-op. A mobile shell injects its own Android notifier here.
+	Notify func(title, body string)
+	stop   chan struct{}
 
 	// lastCleanupDate remembers the day of the last stale-key sweep so the
 	// delete runs once per day instead of on every minute tick. Only the
@@ -125,7 +130,11 @@ func (g *GoalNotifier) check() {
 		if err := g.Store.SetSetting(key, "1"); err != nil {
 			continue
 		}
-		showNotification(
+		notify := g.Notify
+		if notify == nil {
+			notify = showNotification
+		}
+		notify(
 			"Miku Chrono · 目标达成",
 			fmt.Sprintf("「%s」今日累计已达 %d 分钟目标 🎉", a.Name, a.DailyGoalMinutes),
 		)

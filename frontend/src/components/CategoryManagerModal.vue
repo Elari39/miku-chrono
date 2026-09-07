@@ -2,6 +2,8 @@
 import { computed, ref, watch } from "vue";
 import { CategoryService, type Activity, type Category } from "../lib/api";
 import { useToast } from "../composables/useToast";
+import { errorMessage } from "../lib/errors";
+import { PALETTE } from "../lib/palette";
 import ConfirmDialog from "./ConfirmDialog.vue";
 import Modal from "./Modal.vue";
 
@@ -16,17 +18,7 @@ const emit = defineEmits<{ close: []; changed: [] }>();
 
 const { success, error } = useToast();
 
-const palette = [
-  "#cc785c",
-  "#a9583e",
-  "#5db8a6",
-  "#e8a55a",
-  "#5db872",
-  "#d4a017",
-  "#c64545",
-  "#141413",
-  "#6c6a64",
-];
+const palette = PALETTE;
 
 const catView = ref<"list" | "form">("list");
 const catEditing = ref<Category | null>(null);
@@ -83,7 +75,7 @@ async function saveCategory() {
     catView.value = "list";
     emit("changed");
   } catch (err) {
-    catFormError.value = String((err as Error).message ?? err).replace(/^\w+:\s*/, "");
+    catFormError.value = errorMessage(err);
   }
 }
 
@@ -95,7 +87,7 @@ async function doDeleteCategory() {
     deleteCatTarget.value = null;
     emit("changed");
   } catch (err) {
-    error(String((err as Error).message ?? err).replace(/^\w+:\s*/, ""));
+    error(errorMessage(err));
   }
 }
 </script>

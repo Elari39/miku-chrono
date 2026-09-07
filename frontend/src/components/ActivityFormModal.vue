@@ -2,6 +2,8 @@
 import { ref, watch } from "vue";
 import { ActivityService, type Activity, type Category } from "../lib/api";
 import { useToast } from "../composables/useToast";
+import { errorMessage } from "../lib/errors";
+import { PALETTE } from "../lib/palette";
 import Modal from "./Modal.vue";
 
 const props = defineProps<{
@@ -15,17 +17,7 @@ const emit = defineEmits<{ close: []; saved: [] }>();
 
 const { success } = useToast();
 
-const palette = [
-  "#cc785c",
-  "#a9583e",
-  "#5db8a6",
-  "#e8a55a",
-  "#5db872",
-  "#d4a017",
-  "#c64545",
-  "#141413",
-  "#6c6a64",
-];
+const palette = PALETTE;
 
 const emptyForm = () => ({
   name: "",
@@ -75,7 +67,7 @@ async function save() {
     }
     emit("saved");
   } catch (err) {
-    formError.value = String((err as Error).message ?? err).replace(/^\w+:\s*/, "");
+    formError.value = errorMessage(err);
   }
 }
 </script>

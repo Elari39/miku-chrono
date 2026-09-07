@@ -2,6 +2,7 @@
 // (每日/每周/每月/每年). No Vue or Wails imports so it stays trivially
 // testable; local "YYYY-MM-DD" date strings go in and out.
 import { dateStr } from "./format";
+import { DEFAULT_ACTIVITY_COLOR } from "./palette";
 
 export type Granularity = "day" | "week" | "month" | "year";
 
@@ -236,7 +237,7 @@ export function buildTimelineSegments(
       if (overlapEnd <= overlapStart) return null;
       return {
         activityId: e.activityId,
-        color: e.activityColor || "#cc785c",
+        color: e.activityColor || DEFAULT_ACTIVITY_COLOR,
         name: e.activityName || `活动 ${e.activityId}`,
         startMin: (overlapStart - dayStartMs) / 60000,
         endMin: (overlapEnd - dayStartMs) / 60000,

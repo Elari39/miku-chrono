@@ -20,8 +20,15 @@ type Store struct {
 	db *sql.DB
 }
 
+// DefaultColor is the fallback color for activities and categories without
+// a user-chosen one (the DESIGN.md palette's first swatch). Migration
+// scripts embed the literal instead on purpose: they are immutable
+// snapshots and must not change if the default ever does.
+const DefaultColor = "#cc785c"
+
 // migrations holds every schema version in order. Index i+1 is applied when
-// the stored schema_version equals i.
+// the stored schema_version equals i. Each script is an immutable snapshot:
+// it must stay self-contained and never reference Go constants.
 var migrations = []string{
 	// v1: initial schema.
 	`
@@ -71,6 +78,38 @@ var migrations = []string{
 	);
 	ALTER TABLE activities ADD COLUMN category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL;
 	`,
+	// v3: timestamps become timezone-proof. Entries used to store local
+	// RFC3339 strings whose UTC offset was the writer's at write time, so
+	// SQL string range comparisons silently broke after a timezone/DST
+	// change (mixed offsets no longer sort chronologically). From now on
+	// every time column stores UTC ("Z" suffix) and the writer's local start
+	// day lives in the indexed entries.local_day, which the day filters and
+	// streak queries use instead of slicing started_at.
+	//
+	// The rewrite is pure SQLite: strftime parses an offset-suffixed
+	// RFC3339 value and renders it in UTC, and COALESCE leaves any
+	// unparseable legacy value untouched instead of NULLing a NOT NULL
+	// column. local_day is backfilled from the ORIGINAL started_at's date
+	// part (one UPDATE's SET clauses all read the old row), preserving the
+	// day each record was attributed to when it was written.
+	`
+	ALTER TABLE entries ADD COLUMN local_day TEXT NOT NULL DEFAULT '';
+	UPDATE entries SET
+		local_day  = substr(started_at, 1, 10),
+		started_at = COALESCE(strftime('%Y-%m-%dT%H:%M:%SZ', started_at), started_at),
+		ended_at   = COALESCE(strftime('%Y-%m-%dT%H:%M:%SZ', ended_at),   ended_at);
+	UPDATE activities SET
+		created_at = COALESCE(strftime('%Y-%m-%dT%H:%M:%SZ', created_at), created_at),
+		updated_at = COALESCE(strftime('%Y-%m-%dT%H:%M:%SZ', updated_at), updated_at);
+	UPDATE categories SET
+		created_at = COALESCE(strftime('%Y-%m-%dT%H:%M:%SZ', created_at), created_at),
+		updated_at = COALESCE(strftime('%Y-%m-%dT%H:%M:%SZ', updated_at), updated_at);
+	UPDATE running_state SET
+		started_at = COALESCE(strftime('%Y-%m-%dT%H:%M:%SZ', started_at), started_at),
+		updated_at = COALESCE(strftime('%Y-%m-%dT%H:%M:%SZ', updated_at), updated_at);
+	CREATE INDEX idx_entries_local_day ON entries(local_day);
+	CREATE INDEX idx_entries_activity_local_day ON entries(activity_id, local_day);
+	`,
 }
 
 // seedActivities are created on first launch so the check-in page is never
@@ -79,7 +118,7 @@ var seedActivities = []struct {
 	name  string
 	color string
 }{
-	{"学习", "#cc785c"},
+	{"学习", DefaultColor},
 	{"工作", "#5db8a6"},
 	{"运动", "#e8a55a"},
 }
@@ -237,25 +276,22 @@ func (s *Store) SetSetting(key, value string) error {
 	return nil
 }
 
-// NowString renders t as a local RFC3339 timestamp, the canonical storage
-// format for every time column.
-func NowString() string { return time.Now().Format(time.RFC3339) }
+// NowString renders time.Now as a UTC RFC3339 timestamp, the canonical
+// storage format for every time column since schema v3. UTC strings carry a
+// fixed offset, so lexicographic order equals chronological order and the
+// SQL string range filters stay correct across timezone/DST changes.
+func NowString() string { return FormatTime(time.Now()) }
 
-// FormatTime renders t as a local RFC3339 timestamp.
-func FormatTime(t time.Time) string { return t.Format(time.RFC3339) }
+// FormatTime renders t as a UTC RFC3339 timestamp.
+func FormatTime(t time.Time) string { return t.UTC().Format(time.RFC3339) }
 
-// ParseTime parses a stored RFC3339 timestamp.
+// ParseTime parses a stored RFC3339 timestamp (UTC since v3, but any offset
+// variant parses too — the instant is what matters).
 func ParseTime(v string) (time.Time, error) { return time.Parse(time.RFC3339, v) }
 
-// DayOf extracts the local "YYYY-MM-DD" date part of a stored timestamp.
-func DayOf(stored string) string {
-	if len(stored) >= 10 {
-		return stored[:10]
-	}
-	return stored
-}
-
-// Today returns the local date string for t.
+// Today returns the local date string ("YYYY-MM-DD") for t, formatted in
+// t's own location: pass a local time for the machine's current local day,
+// or a parsed offset-aware timestamp for that timestamp's wall-clock date.
 func Today(t time.Time) string { return t.Format("2006-01-02") }
 
 // AddDays returns the date string n days from date (date is "YYYY-MM-DD").

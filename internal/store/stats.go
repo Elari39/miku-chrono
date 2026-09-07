@@ -16,8 +16,9 @@ type dayPiece struct {
 }
 
 // splitByLocalDay slices [start, end) into per-local-day pieces. Day
-// boundaries are midnights in the timestamps' own location, which matches
-// the wall-clock dates written into started_at / ended_at. Stored
+// boundaries are midnights in the passed times' location — callers convert
+// stored UTC timestamps to the viewer's local zone first (start.Local()),
+// so the pieces land on the calendar days the user sees. Stored
 // timestamps are whole seconds (RFC3339 rendering drops sub-second parts)
 // and so are the boundaries, hence the integer-second split never loses or
 // gains a second and the pieces sum exactly to end.Sub(start).
@@ -42,10 +43,10 @@ func splitByLocalDay(start, end time.Time) []dayPiece {
 	return out
 }
 
-// startOfDay returns date's local midnight as an RFC3339 string in the
-// current local offset — the same rendering entries are stored in, so the
-// string comparisons used by the overlap filters below stay in sync with
-// timestamp order.
+// startOfDay returns date's local midnight rendered as a UTC RFC3339 string
+// — the same UTC rendering entries are stored in (schema v3), so the string
+// comparisons used by the overlap filters below stay in sync with
+// timestamp order regardless of the machine's timezone changes.
 func startOfDay(date string) (string, error) {
 	t, err := time.ParseInLocation("2006-01-02", date, time.Local)
 	if err != nil {
@@ -95,7 +96,10 @@ func (s *Store) loadDayPieces(fromDate, toDate string) ([]dayPiece, error) {
 		if err != nil {
 			return nil, fmt.Errorf("day pieces: parse ended_at: %w", err)
 		}
-		for _, p := range splitByLocalDay(start, end) {
+		// Stored timestamps are UTC (schema v3); the split buckets by the
+		// viewer's current local calendar, matching how from/to dates are
+		// produced on this machine.
+		for _, p := range splitByLocalDay(start.Local(), end.Local()) {
 			if p.date >= fromDate && p.date <= toDate {
 				out = append(out, dayPiece{activityID: act, date: p.date, secs: p.secs})
 			}
@@ -139,33 +143,34 @@ func (s *Store) TotalSecondsByActivity() (map[int64]int64, error) {
 	return out, rows.Err()
 }
 
-// ActiveDays returns the set of local dates on which at least one record
-// started. A nil activityID means "any activity". A cross-midnight entry
-// belongs to the day it started on (the project's accounting convention),
-// so only started_at's date is marked.
-func (s *Store) ActiveDays(activityID *int64) (map[string]bool, error) {
-	q := `SELECT started_at FROM entries WHERE duration_seconds > 0`
-	var args []any
-	if activityID != nil {
-		q += ` AND activity_id = ?`
-		args = append(args, *activityID)
-	}
-	rows, err := s.db.Query(q, args...)
+// ActiveDaySets returns, per activity, the set of local start days on which
+// at least one record started. A cross-midnight entry belongs to the day it
+// started on (the project's accounting convention), so local_day — the
+// writer's start-day wall clock, maintained since schema v3 — is the
+// attribution column. One grouped query over the covering index replaces
+// the previous per-activity full-table scans (the overview page needs every
+// activity's set on each reload).
+func (s *Store) ActiveDaySets() (map[int64]map[string]bool, error) {
+	rows, err := s.db.Query(
+		`SELECT activity_id, local_day FROM entries
+		 WHERE duration_seconds > 0 GROUP BY activity_id, local_day`)
 	if err != nil {
-		return nil, fmt.Errorf("active days: %w", err)
+		return nil, fmt.Errorf("active day sets: %w", err)
 	}
 	defer rows.Close()
-	out := map[string]bool{}
+	out := map[int64]map[string]bool{}
 	for rows.Next() {
-		var startS string
-		if err := rows.Scan(&startS); err != nil {
+		var id int64
+		var day string
+		if err := rows.Scan(&id, &day); err != nil {
 			return nil, err
 		}
-		start, err := ParseTime(startS)
-		if err != nil {
-			return nil, fmt.Errorf("active days: parse started_at: %w", err)
+		set := out[id]
+		if set == nil {
+			set = map[string]bool{}
+			out[id] = set
 		}
-		out[Today(start)] = true
+		set[day] = true
 	}
 	return out, rows.Err()
 }

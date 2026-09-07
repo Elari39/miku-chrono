@@ -10,10 +10,11 @@ import {
 } from "../lib/api";
 import { useToast } from "../composables/useToast";
 import { useVersionedLoad } from "../composables/useVersionedLoad";
-import { codePointLength, formatWhen, fromLocalInput, toLocalInput } from "../lib/format";
+import { codePointLength, fromLocalInput, toLocalInput } from "../lib/format";
+import { errorMessage } from "../lib/errors";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
-import DurationText from "../components/DurationText.vue";
 import EmptyState from "../components/EmptyState.vue";
+import EntryRow from "../components/EntryRow.vue";
 import Modal from "../components/Modal.vue";
 
 const { success, error } = useToast();
@@ -155,7 +156,7 @@ async function save() {
     editorOpen.value = false;
     void reload();
   } catch (err) {
-    formError.value = String((err as Error).message ?? err).replace(/^\w+:\s*/, "");
+    formError.value = errorMessage(err);
   }
 }
 
@@ -167,7 +168,7 @@ async function doDelete() {
     deleteTarget.value = null;
     void reload();
   } catch (err) {
-    error(String((err as Error).message ?? err).replace(/^\w+:\s*/, ""));
+    error(errorMessage(err));
   }
 }
 
@@ -200,31 +201,12 @@ onMounted(() => {
     />
 
     <div v-else class="mc-card divide-y divide-hairline overflow-hidden">
-      <div
+      <EntryRow
         v-for="e in entries"
         :key="e.id"
-        class="flex items-center gap-4 px-5 py-3.5 hover:bg-surface-card/50"
+        :entry="e"
+        :duration-seconds="e.durationSeconds"
       >
-        <span class="h-8 w-1 rounded-full" :style="{ backgroundColor: e.activityColor }" />
-        <div class="min-w-0 flex-1">
-          <div class="flex items-center gap-2">
-            <span class="text-sm font-medium text-ink">{{ e.activityName }}</span>
-            <span
-              class="rounded-full px-1.5 py-0.5 text-[10px]"
-              :class="
-                e.source === 'timer'
-                  ? 'bg-primary/10 text-primary'
-                  : 'bg-accent-teal/15 text-accent-teal'
-              "
-              >{{ e.source === "timer" ? "计时" : "补录" }}</span
-            >
-          </div>
-          <div class="mt-0.5 truncate text-xs text-muted">
-            {{ formatWhen(e.startedAt) }} → {{ formatWhen(e.endedAt) }}
-            <span v-if="e.note" class="ml-1">· {{ e.note }}</span>
-          </div>
-        </div>
-        <DurationText :seconds="e.durationSeconds" class="text-sm font-medium text-body" />
         <div class="flex gap-1">
           <button
             class="cursor-pointer rounded-md px-2 py-1 text-xs text-muted hover:bg-surface-card hover:text-body"
@@ -239,7 +221,7 @@ onMounted(() => {
             删除
           </button>
         </div>
-      </div>
+      </EntryRow>
     </div>
 
     <div
@@ -260,24 +242,37 @@ onMounted(() => {
     >
       <div class="flex flex-col gap-4">
         <div>
-          <label class="mc-label">活动</label>
-          <select v-model="form.activityId" class="mc-input">
+          <label class="mc-label" for="manual-activity">活动</label>
+          <select id="manual-activity" v-model="form.activityId" class="mc-input">
             <option v-for="a in activities" :key="a.id" :value="a.id">{{ a.name }}</option>
           </select>
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="mc-label">开始时间</label>
-            <input v-model="form.start" type="datetime-local" step="1" class="mc-input" />
+            <label class="mc-label" for="manual-start">开始时间</label>
+            <input
+              id="manual-start"
+              v-model="form.start"
+              type="datetime-local"
+              step="1"
+              class="mc-input"
+            />
           </div>
           <div>
-            <label class="mc-label">结束时间</label>
-            <input v-model="form.end" type="datetime-local" step="1" class="mc-input" />
+            <label class="mc-label" for="manual-end">结束时间</label>
+            <input
+              id="manual-end"
+              v-model="form.end"
+              type="datetime-local"
+              step="1"
+              class="mc-input"
+            />
           </div>
         </div>
         <div>
-          <label class="mc-label">备注（可选）</label>
+          <label class="mc-label" for="manual-note">备注（可选）</label>
           <input
+            id="manual-note"
             v-model="form.note"
             type="text"
             placeholder="这次专注做了什么？"

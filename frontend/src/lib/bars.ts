@@ -1,6 +1,7 @@
 // Pure SVG bar-chart layout math for the statistics views. Extracted from
 // components/BarChart.vue so it stays unit-testable.
 import { formatDay, formatDuration } from "./format";
+import { DEFAULT_ACTIVITY_COLOR } from "./palette";
 
 export const BAR_CHART_LAYOUT = {
   H: 200,
@@ -133,7 +134,7 @@ export function buildBars(
         y -= h;
         return {
           secs,
-          color: colors[activityId] ?? "#cc785c",
+          color: colors[activityId] ?? DEFAULT_ACTIVITY_COLOR,
           name: names[activityId] ?? `活动 ${activityId}`,
           y,
           h,
