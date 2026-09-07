@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { localRFC3339 } from "./format";
 import {
   buildTimelineSegments,
   elapsedDaysInPeriod,
@@ -168,10 +169,21 @@ describe("buildTimelineSegments", () => {
   };
 
   it("maps entries to minute segments sorted by start", () => {
+    // Timestamps built from the local wall clock: buildTimelineSegments maps
+    // stored instants to local minutes-of-day, so the expected minutes only
+    // hold when the inputs are expressed in the machine's own offset.
     const segs = buildTimelineSegments(
       [
-        { ...base, startedAt: "2025-09-05T10:00:00+08:00", endedAt: "2025-09-05T10:30:00+08:00" },
-        { ...base, startedAt: "2025-09-05T08:30:00+08:00", endedAt: "2025-09-05T09:30:00+08:00" },
+        {
+          ...base,
+          startedAt: localRFC3339(new Date(2025, 8, 5, 10, 0, 0)),
+          endedAt: localRFC3339(new Date(2025, 8, 5, 10, 30, 0)),
+        },
+        {
+          ...base,
+          startedAt: localRFC3339(new Date(2025, 8, 5, 8, 30, 0)),
+          endedAt: localRFC3339(new Date(2025, 8, 5, 9, 30, 0)),
+        },
       ],
       "2025-09-05",
     );
@@ -184,7 +196,13 @@ describe("buildTimelineSegments", () => {
 
   it("clamps cross-midnight entries at 24:00", () => {
     const segs = buildTimelineSegments(
-      [{ ...base, startedAt: "2025-09-05T23:00:00+08:00", endedAt: "2025-09-06T01:00:00+08:00" }],
+      [
+        {
+          ...base,
+          startedAt: localRFC3339(new Date(2025, 8, 5, 23, 0, 0)),
+          endedAt: localRFC3339(new Date(2025, 8, 6, 1, 0, 0)),
+        },
+      ],
       "2025-09-05",
     );
     expect(segs[0].endMin).toBe(1440);

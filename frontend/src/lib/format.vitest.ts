@@ -103,13 +103,14 @@ describe("datetime-local conversions", () => {
 
   it("keeps a 25-second record intact when only the note is edited", () => {
     // Regression for the minute-truncation bug: 10:00:45 → 10:01:10 must
-    // survive a form round-trip unchanged.
-    const start = toLocalInput("2025-09-05T10:00:45+08:00");
-    const end = toLocalInput("2025-09-05T10:01:10+08:00");
+    // survive a form round-trip unchanged. Timestamps are built from the
+    // local wall clock so the assertion holds in any timezone.
+    const start = toLocalInput(localRFC3339(new Date(2025, 8, 5, 10, 0, 45)));
+    const end = toLocalInput(localRFC3339(new Date(2025, 8, 5, 10, 1, 10)));
     expect(start).toBe("2025-09-05T10:00:45");
     expect(end).toBe("2025-09-05T10:01:10");
-    expect(fromLocalInput(start)).toBe("2025-09-05T10:00:45+08:00");
-    expect(fromLocalInput(end)).toBe("2025-09-05T10:01:10+08:00");
+    expect(toLocalInput(fromLocalInput(start))).toBe(start);
+    expect(toLocalInput(fromLocalInput(end))).toBe(end);
   });
 
   it("returns empty strings for invalid input", () => {
