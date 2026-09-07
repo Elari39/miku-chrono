@@ -217,6 +217,10 @@ const maxPageSize = 200
 // range, so cross-midnight entries appear on every day they touch.
 func (s *Store) ListEntries(f models.EntryFilter) (models.EntryList, error) {
 	where := []string{"1=1"}
+	// entriesFrom carries the table hint: the overlap branch forces
+	// idx_entries_ended (see stats.go loadDayPieces) so a narrow range seeks
+	// instead of walking history to satisfy the ORDER BY.
+	entriesFrom := `FROM entries e`
 	var args []any
 	if f.ActivityID != nil {
 		where = append(where, "e.activity_id = ?")
@@ -239,6 +243,7 @@ func (s *Store) ListEntries(f models.EntryFilter) (models.EntryList, error) {
 		// at the range start occupies none of it and must not show up.
 		where = append(where, "e.ended_at > ? AND e.started_at < ?")
 		args = append(args, fromStart, toExcl)
+		entriesFrom = `FROM entries e INDEXED BY idx_entries_ended`
 	} else {
 		// Start-day membership via the indexed local_day column (schema v3):
 		// slicing started_at would both miss the index and — before the UTC
@@ -266,11 +271,11 @@ func (s *Store) ListEntries(f models.EntryFilter) (models.EntryList, error) {
 	}
 
 	var total int64
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM entries e WHERE `+w, args...).Scan(&total); err != nil {
+	if err := s.db.QueryRow(`SELECT COUNT(*) `+entriesFrom+` WHERE `+w, args...).Scan(&total); err != nil {
 		return models.EntryList{}, fmt.Errorf("count entries: %w", err)
 	}
 
-	q := `SELECT ` + entryCols + ` FROM entries e LEFT JOIN activities a ON a.id = e.activity_id
+	q := `SELECT ` + entryCols + ` ` + entriesFrom + ` LEFT JOIN activities a ON a.id = e.activity_id
 	      WHERE ` + w + ` ORDER BY e.started_at DESC, e.id DESC LIMIT ? OFFSET ?`
 	args = append(args, size, (page-1)*size)
 	rows, err := s.db.Query(q, args...)
@@ -292,30 +297,43 @@ func (s *Store) ListEntries(f models.EntryFilter) (models.EntryList, error) {
 	return models.EntryList{Items: items, Total: total, Page: page, PageSize: size}, nil
 }
 
-// ListAllEntries returns every entry without pagination, newest first. It
-// backs the full-database JSON/CSV exports; the paginated ListEntries keeps
-// its 200-per-page cap for the UI. The store keeps a single connection
-// (SetMaxOpenConns(1)), so the sequential reads see a consistent snapshot.
-func (s *Store) ListAllEntries() ([]models.Entry, error) {
+// IterateAllEntries walks every entry (joined with activity info), newest
+// first, invoking fn per row. It backs the full-database JSON/CSV exports:
+// rows stream straight from the cursor to the file instead of being
+// materialized, so memory stays flat on large histories. The store keeps a
+// single connection (SetMaxOpenConns(1)), so the sequential reads see a
+// consistent snapshot. fn returning an error aborts the iteration.
+func (s *Store) IterateAllEntries(fn func(models.Entry) error) error {
 	rows, err := s.db.Query(`SELECT ` + entryCols + ` FROM entries e
 	      LEFT JOIN activities a ON a.id = e.activity_id
 	      ORDER BY e.started_at DESC, e.id DESC`)
 	if err != nil {
-		return nil, fmt.Errorf("list all entries: %w", err)
+		return fmt.Errorf("iterate all entries: %w", err)
 	}
 	defer rows.Close()
-	items := []models.Entry{}
 	for rows.Next() {
 		e, err := scanEntry(rows)
 		if err != nil {
-			return nil, err
+			return err
 		}
+		if err := fn(e); err != nil {
+			return err
+		}
+	}
+	return rows.Err()
+}
+
+// ListAllEntries returns every entry without pagination, newest first. A
+// thin materialization of IterateAllEntries — prefer the iterator in
+// streaming contexts; this remains for callers that genuinely want the
+// whole slice.
+func (s *Store) ListAllEntries() ([]models.Entry, error) {
+	items := []models.Entry{}
+	err := s.IterateAllEntries(func(e models.Entry) error {
 		items = append(items, e)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+		return nil
+	})
+	return items, err
 }
 
 // GetEntry fetches one entry with activity info joined.

@@ -4,6 +4,7 @@ import { ActivityService, type Activity, type Category } from "../lib/api";
 import { useToast } from "../composables/useToast";
 import { errorMessage } from "../lib/errors";
 import { PALETTE } from "../lib/palette";
+import ColorSwatchPicker from "./ColorSwatchPicker.vue";
 import Modal from "./Modal.vue";
 
 const props = defineProps<{
@@ -76,8 +77,9 @@ async function save() {
   <Modal :open="open" :title="activity ? '编辑活动' : '新建活动'" @close="emit('close')">
     <div class="flex flex-col gap-4">
       <div>
-        <label class="mc-label">名称</label>
+        <label class="mc-label" for="activity-name">名称</label>
         <input
+          id="activity-name"
           v-model="form.name"
           type="text"
           maxlength="50"
@@ -86,8 +88,8 @@ async function save() {
         />
       </div>
       <div>
-        <label class="mc-label">类别（可选）</label>
-        <select v-model="form.categoryId" class="mc-input">
+        <label class="mc-label" for="activity-category">类别（可选）</label>
+        <select id="activity-category" v-model="form.categoryId" class="mc-input">
           <option :value="null">未分类</option>
           <option v-for="c in categories" :key="c.id" :value="c.id">
             {{ c.icon ? `${c.icon} ` : "" }}{{ c.name }}
@@ -96,26 +98,25 @@ async function save() {
         <p class="mt-1 text-xs text-muted-soft">类别可在「类别管理」中自定义。</p>
       </div>
       <div>
-        <label class="mc-label">颜色</label>
-        <div class="flex flex-wrap gap-2">
-          <button
-            v-for="c in palette"
-            :key="c"
-            class="h-7 w-7 cursor-pointer rounded-full border-2 transition-transform"
-            :class="form.color === c ? 'scale-110 border-ink' : 'border-transparent'"
-            :style="{ backgroundColor: c }"
-            @click="form.color = c"
-          />
-        </div>
+        <span class="mc-label">颜色</span>
+        <ColorSwatchPicker v-model="form.color" />
       </div>
       <div class="grid grid-cols-2 gap-3">
         <div>
-          <label class="mc-label">图标（可选，一个 emoji）</label>
-          <input v-model="form.icon" type="text" maxlength="4" placeholder="📚" class="mc-input" />
+          <label class="mc-label" for="activity-icon">图标（可选，一个 emoji）</label>
+          <input
+            id="activity-icon"
+            v-model="form.icon"
+            type="text"
+            maxlength="4"
+            placeholder="📚"
+            class="mc-input"
+          />
         </div>
         <div>
-          <label class="mc-label">每日目标（分钟，0 为不设）</label>
+          <label class="mc-label" for="activity-goal">每日目标（分钟，0 为不设）</label>
           <input
+            id="activity-goal"
             v-model.number="form.dailyGoalMinutes"
             type="number"
             min="0"

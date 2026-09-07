@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"mikuchrono/internal/applog"
 	"mikuchrono/internal/models"
 	"mikuchrono/internal/store"
 )
@@ -75,10 +76,19 @@ func (g *GoalNotifier) loop() {
 
 // check scans active activities once and notifies any that crossed their
 // daily goal today and have not been notified yet. All failures are treated
-// as transient and silent: the next tick retries.
+// as transient: they are logged via applog (they used to vanish silently,
+// which made "reminders stopped working" undiagnosable) and the next tick
+// retries. A panic is recovered so one bad tick cannot kill the loop — or
+// the app.
 func (g *GoalNotifier) check() {
+	defer func() {
+		if r := recover(); r != nil {
+			applog.Printf("goal notify: check panic: %v", r)
+		}
+	}()
 	v, found, err := g.Store.GetSetting(keyGoalNotify)
 	if err != nil {
+		applog.Printf("goal notify: read setting: %v", err)
 		return
 	}
 	if found && v == "0" {
@@ -86,6 +96,7 @@ func (g *GoalNotifier) check() {
 	}
 	acts, err := g.Store.ListActivities(false)
 	if err != nil {
+		applog.Printf("goal notify: list activities: %v", err)
 		return
 	}
 	today := store.Today(time.Now())
@@ -93,17 +104,23 @@ func (g *GoalNotifier) check() {
 	// does not grow without bound; a failure is transient and retried by
 	// the next tick.
 	if g.lastCleanupDate != today {
-		if err := g.Store.DeleteStaleGoalNotifyKeys(today); err == nil {
+		if err := g.Store.DeleteStaleGoalNotifyKeys(today); err != nil {
+			applog.Printf("goal notify: sweep stale keys: %v", err)
+		} else {
 			g.lastCleanupDate = today
 		}
 	}
 	todaySecs, err := g.Store.TodaySecondsByActivity(today)
 	if err != nil {
+		applog.Printf("goal notify: today totals: %v", err)
 		return
 	}
 	// The running timer's session seconds are not in the recorded totals yet.
+	// A read error here just means the add-on is skipped this tick.
 	var running *models.TimerState
-	if st, err := g.Store.GetTimerState(time.Now()); err == nil && st.Running {
+	if st, err := g.Store.GetTimerState(time.Now()); err != nil {
+		applog.Printf("goal notify: timer state: %v", err)
+	} else if st.Running {
 		running = &st
 	}
 	for _, a := range acts {
@@ -127,6 +144,7 @@ func (g *GoalNotifier) check() {
 		// Mark before notifying so a notification failure still dedupes with
 		// the next tick rather than spamming.
 		if err := g.Store.SetSetting(key, "1"); err != nil {
+			applog.Printf("goal notify: write dedupe key: %v", err)
 			continue
 		}
 		notify := g.Notify

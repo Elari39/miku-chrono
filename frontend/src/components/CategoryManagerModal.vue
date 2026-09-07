@@ -4,6 +4,7 @@ import { CategoryService, type Activity, type Category } from "../lib/api";
 import { useToast } from "../composables/useToast";
 import { errorMessage } from "../lib/errors";
 import { PALETTE } from "../lib/palette";
+import ColorSwatchPicker from "./ColorSwatchPicker.vue";
 import ConfirmDialog from "./ConfirmDialog.vue";
 import Modal from "./Modal.vue";
 
@@ -144,8 +145,9 @@ async function doDeleteCategory() {
 
     <div v-else class="flex flex-col gap-4">
       <div>
-        <label class="mc-label">名称</label>
+        <label class="mc-label" for="category-name">名称</label>
         <input
+          id="category-name"
           v-model="catForm.name"
           type="text"
           maxlength="20"
@@ -154,21 +156,19 @@ async function doDeleteCategory() {
         />
       </div>
       <div>
-        <label class="mc-label">图标（可选，一个 emoji）</label>
-        <input v-model="catForm.icon" type="text" maxlength="4" placeholder="📚" class="mc-input" />
+        <label class="mc-label" for="category-icon">图标（可选，一个 emoji）</label>
+        <input
+          id="category-icon"
+          v-model="catForm.icon"
+          type="text"
+          maxlength="4"
+          placeholder="📚"
+          class="mc-input"
+        />
       </div>
       <div>
-        <label class="mc-label">颜色</label>
-        <div class="flex flex-wrap gap-2">
-          <button
-            v-for="c in palette"
-            :key="c"
-            class="h-7 w-7 cursor-pointer rounded-full border-2 transition-transform"
-            :class="catForm.color === c ? 'scale-110 border-ink' : 'border-transparent'"
-            :style="{ backgroundColor: c }"
-            @click="catForm.color = c"
-          />
-        </div>
+        <span class="mc-label">颜色</span>
+        <ColorSwatchPicker v-model="catForm.color" />
       </div>
       <p v-if="catFormError" class="text-xs text-error">{{ catFormError }}</p>
     </div>

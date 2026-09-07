@@ -73,8 +73,15 @@ func (s *Store) loadDayPieces(fromDate, toDate string) ([]dayPiece, error) {
 	if err != nil {
 		return nil, fmt.Errorf("day pieces: %w", err)
 	}
+	// INDEXED BY is deliberate: left to its own (statistic-free) planner,
+	// the ORDER BY tempts it onto idx_entries_started, which bounds nothing
+	// — nearly all history starts before tomorrow — and the "today" scans
+	// degrade to full-table walks again. The ended index is schema-guaranteed
+	// since v4; if it ever goes missing this fails loudly instead of
+	// silently going O(total history).
 	rows, err := s.db.Query(
 		`SELECT activity_id, started_at, ended_at FROM entries
+		 INDEXED BY idx_entries_ended
 		 WHERE ended_at > ? AND started_at < ?
 		 ORDER BY started_at, id`, fromStart, toExcl)
 	if err != nil {
@@ -125,54 +132,61 @@ func (s *Store) TodaySecondsByActivity(today string) (map[int64]int64, error) {
 	return out, nil
 }
 
-// TotalSecondsByActivity sums all recorded seconds per activity.
-func (s *Store) TotalSecondsByActivity() (map[int64]int64, error) {
-	rows, err := s.db.Query(`SELECT activity_id, SUM(duration_seconds) FROM entries GROUP BY activity_id`)
+// ActivityDayTotals returns, per activity, the summed seconds per local
+// start day. This single grouped query feeds both all-time totals (the SUM
+// decomposes across days, so summing the per-day values reproduces the
+// per-activity total) and the active-day sets (the map keys), replacing the
+// two separate full-table aggregates the overview page previously ran. The
+// covering index idx_entries_activity_local_day makes it a pure index scan.
+// A cross-midnight entry belongs to the day it started on (the project's
+// accounting convention), so local_day — the writer's start-day wall clock,
+// maintained since schema v3 — is the attribution column.
+func (s *Store) ActivityDayTotals() (map[int64]map[string]int64, error) {
+	rows, err := s.db.Query(
+		`SELECT activity_id, local_day, SUM(duration_seconds) FROM entries
+		 GROUP BY activity_id, local_day`)
 	if err != nil {
-		return nil, fmt.Errorf("total seconds: %w", err)
+		return nil, fmt.Errorf("activity day totals: %w", err)
 	}
 	defer rows.Close()
-	out := map[int64]int64{}
+	out := map[int64]map[string]int64{}
 	for rows.Next() {
-		var id, secs int64
-		if err := rows.Scan(&id, &secs); err != nil {
+		var id int64
+		var day string
+		var secs int64
+		if err := rows.Scan(&id, &day, &secs); err != nil {
 			return nil, err
 		}
-		out[id] = secs
+		days := out[id]
+		if days == nil {
+			days = map[string]int64{}
+			out[id] = days
+		}
+		days[day] = secs
 	}
 	return out, rows.Err()
 }
 
 // ActiveDaySets returns, per activity, the set of local start days on which
-// at least one record started. A cross-midnight entry belongs to the day it
-// started on (the project's accounting convention), so local_day — the
-// writer's start-day wall clock, maintained since schema v3 — is the
-// attribution column. One grouped query over the covering index replaces
-// the previous per-activity full-table scans (the overview page needs every
-// activity's set on each reload).
+// at least one record started. It projects the keys of ActivityDayTotals,
+// sharing that method's single covering-index query. (The old explicit
+// "duration_seconds > 0" filter is gone: every entry's duration is at least
+// one second by construction — the timer drops shorter sessions and manual
+// entries must end after they start.)
 func (s *Store) ActiveDaySets() (map[int64]map[string]bool, error) {
-	rows, err := s.db.Query(
-		`SELECT activity_id, local_day FROM entries
-		 WHERE duration_seconds > 0 GROUP BY activity_id, local_day`)
+	totals, err := s.ActivityDayTotals()
 	if err != nil {
 		return nil, fmt.Errorf("active day sets: %w", err)
 	}
-	defer rows.Close()
-	out := map[int64]map[string]bool{}
-	for rows.Next() {
-		var id int64
-		var day string
-		if err := rows.Scan(&id, &day); err != nil {
-			return nil, err
+	out := make(map[int64]map[string]bool, len(totals))
+	for id, days := range totals {
+		set := make(map[string]bool, len(days))
+		for day := range days {
+			set[day] = true
 		}
-		set := out[id]
-		if set == nil {
-			set = map[string]bool{}
-			out[id] = set
-		}
-		set[day] = true
+		out[id] = set
 	}
-	return out, rows.Err()
+	return out, nil
 }
 
 // DayBuckets returns per-day per-activity seconds between the two local

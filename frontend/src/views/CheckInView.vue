@@ -11,16 +11,17 @@ import {
 import { useTimer } from "../composables/useTimer";
 import { useVersionedLoad } from "../composables/useVersionedLoad";
 import { useToast } from "../composables/useToast";
-import { formatDuration, todayStr } from "../lib/format";
+import { formatDuration } from "../lib/format";
 import { errorMessage } from "../lib/errors";
 import ActivityCard from "../components/ActivityCard.vue";
 import ActivityFormModal from "../components/ActivityFormModal.vue";
 import CategoryManagerModal from "../components/CategoryManagerModal.vue";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
 import RunningTimerCard from "../components/RunningTimerCard.vue";
+import TodayTotal from "../components/TodayTotal.vue";
 import EmptyState from "../components/EmptyState.vue";
 
-const { state, running, start, stop, refresh } = useTimer();
+const { state, running, start, stop } = useTimer();
 const { success, error } = useToast();
 
 const stats = ref<ActivityStat[]>([]);
@@ -37,17 +38,6 @@ const archivedOpen = ref(false);
 const openMenuId = ref<number | null>(null);
 
 const totalToday = computed(() => stats.value.reduce((sum, s) => sum + s.todaySeconds, 0));
-// Live total: includes the running session's elapsed time (only when it
-// started today — a session started before midnight counts towards yesterday).
-// Uses sessionElapsed (current session only), NOT elapsed (chain total):
-// the chain total already contains previously recorded sessions that
-// todaySeconds covers too, so adding it would double-count on resume.
-const displayTotal = computed(() => {
-  if (state.running && state.startedAt.startsWith(todayStr())) {
-    return totalToday.value + state.sessionElapsed;
-  }
-  return totalToday.value;
-});
 
 // Group active activities by category (未分类 last). Only groups that
 // actually contain activities render.
@@ -105,7 +95,8 @@ async function onStop() {
     if (entry) {
       success(`已记录 ${formatDuration(entry.durationSeconds)} · ${entry.activityName}`);
     }
-    void reload();
+    // Aggregates reload via the version bump from the timer:stopped event;
+    // an explicit reload here would re-fetch the same data twice.
   } catch (err) {
     error(errorMessage(err));
   }
@@ -162,10 +153,9 @@ async function doDelete() {
   // StopAndDelete closes the running timer (recording its session) and
   // deletes the activity in one backend transaction — the old stop-then-
   // delete sequence could strand a stopped timer when the delete failed.
-  const wasRunning = state.running && state.activityId === target.id;
+  // State and aggregates refresh via the timer:stopped broadcast.
   try {
     await ActivityService.StopAndDelete(target.id);
-    if (wasRunning) await refresh();
     success("活动及其记录已删除");
     deleteTarget.value = null;
     await reload();
@@ -181,7 +171,7 @@ async function doDelete() {
       <div>
         <h1 class="font-display text-2xl font-semibold text-ink">打卡</h1>
         <p class="mt-1 text-sm text-muted">
-          今日已专注 <span class="font-medium text-body">{{ formatDuration(displayTotal) }}</span>
+          今日已专注 <TodayTotal :today-seconds="totalToday" />
         </p>
       </div>
       <div class="flex items-center gap-3">

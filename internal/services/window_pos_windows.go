@@ -27,16 +27,5 @@ func clampWindowBounds(x, y, width, height int) (int, int) {
 		return x, y
 	}
 	left, top := int(sx), int(sy)
-	right, bottom := left+int(sw), top+int(sh)
-	x = max(x, left)
-	y = max(y, top)
-	if x+width > right {
-		x = right - width
-		x = max(x, left)
-	}
-	if y+height > bottom {
-		y = bottom - height
-		y = max(y, top)
-	}
-	return x, y
+	return clampToRect(x, y, width, height, left, top, left+int(sw), top+int(sh))
 }

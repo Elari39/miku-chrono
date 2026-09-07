@@ -302,6 +302,24 @@ func (s *BallService) QuitApp() {
 	}
 }
 
+// clampToRect pulls a window's top-left back inside the virtual-screen rect
+// [left,right)x[top,bottom) so a position saved while a monitor was
+// connected cannot put the window out of reach after it is gone. Pure
+// geometry, split out of clampWindowBounds for testing.
+func clampToRect(x, y, width, height, left, top, right, bottom int) (int, int) {
+	x = max(x, left)
+	y = max(y, top)
+	if x+width > right {
+		x = right - width
+		x = max(x, left)
+	}
+	if y+height > bottom {
+		y = bottom - height
+		y = max(y, top)
+	}
+	return x, y
+}
+
 // persistThrottle coalesces rapid move/resize events into bounded saves.
 // The first event after an idle interval saves immediately; events arriving
 // during the interval schedule exactly one trailing save that reads the

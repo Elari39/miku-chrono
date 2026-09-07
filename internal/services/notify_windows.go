@@ -8,6 +8,8 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	"mikuchrono/internal/applog"
 )
 
 // Windows notification via a Shell_NotifyIcon balloon. Wails does not expose
@@ -23,6 +25,13 @@ func showNotification(title, body string) {
 	// keeps the caller (the goal-notifier loop) unblocked during the cleanup
 	// delay; one goroutine per notification is negligible at notify rates.
 	go func() {
+		// A panic in this disposable goroutine must not kill the app; the
+		// recover defer registers first so it runs last (after the unlock).
+		defer func() {
+			if r := recover(); r != nil {
+				applog.Printf("notification goroutine panic: %v", r)
+			}
+		}()
 		runtime.LockOSThread()
 		defer runtime.UnlockOSThread()
 

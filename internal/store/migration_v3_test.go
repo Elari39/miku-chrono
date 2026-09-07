@@ -38,6 +38,7 @@ func TestMigrationV3RewritesTimestampsToUTC(t *testing.T) {
 	for _, stmt := range []string{
 		`DROP INDEX IF EXISTS idx_entries_activity_local_day`,
 		`DROP INDEX IF EXISTS idx_entries_local_day`,
+		`DROP INDEX IF EXISTS idx_entries_ended`,
 		`ALTER TABLE entries DROP COLUMN local_day`,
 		`UPDATE entries SET started_at='2025-09-01T23:50:00+08:00', ended_at='2025-09-02T00:10:00+08:00' WHERE id=1`,
 		`UPDATE entries SET started_at='2025-09-03T01:00:00+09:00', ended_at='2025-09-03T02:00:00+09:00' WHERE id=2`,

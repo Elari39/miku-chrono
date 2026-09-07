@@ -1,0 +1,34 @@
+/*
+ * Self-declared font faces: latin subsets only, woff2 only.
+ *
+ * The @fontsource package CSS also ships woff fallbacks plus cyrillic/greek/
+ * vietnamese subsets that this UI never fetches — but every referenced file
+ * ends up bundled into dist and embedded into the binary via go:embed, so
+ * the dead weight is real (the full set was ~900 KB; the three files below
+ * are a fraction of that). CJK text falls back to system fonts regardless,
+ * since these fonts carry no CJK glyphs.
+ */
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("../node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2")
+    format("woff2-variations");
+}
+@font-face {
+  font-family: "EB Garamond";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("../node_modules/@fontsource/eb-garamond/files/eb-garamond-latin-400-normal.woff2")
+    format("woff2");
+}
+@font-face {
+  font-family: "EB Garamond";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 600;
+  src: url("../node_modules/@fontsource/eb-garamond/files/eb-garamond-latin-600-normal.woff2")
+    format("woff2");
+}

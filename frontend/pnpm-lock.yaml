@@ -18,7 +18,7 @@ importers:
         specifier: ^4.3.3
         version: 4.3.3(vite@8.2.2(@types/node@26.4.1)(jiti@2.7.0))
       '@wailsio/runtime':
-        specifier: latest
+        specifier: 3.0.0-beta.16
         version: 3.0.0-beta.16
       tailwindcss:
         specifier: ^4.3.3

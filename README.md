@@ -103,9 +103,21 @@ wails3 build
 ### 测试
 
 ```bash
-go vet ./...
-go test ./...
+wails3 task test      # go vet + go test，随后前端 lint + vitest
+wails3 task lint      # golangci-lint（需自行安装）
 ```
+
+也可以分开手动运行：
+
+```bash
+go vet ./...
+go test ./...         # store / services / applog 共 60+ 个测试
+cd frontend
+pnpm lint             # ESLint
+pnpm test             # vitest：lib 纯函数、组件与 composables
+```
+
+推送与 PR 由 GitHub Actions（`.github/workflows/ci.yml`，Windows runner）自动执行以上检查。
 
 ## 📁 项目结构
 
@@ -117,6 +129,7 @@ Miku_Chrono/
 ├── internal/
 │   ├── models/             # Go ↔ TypeScript 共享数据结构
 │   ├── store/              # SQLite 数据层：迁移 / 种子数据 / 全部 SQL
+│   ├── applog/             # 最小文件日志（后台 goroutine 错误留痕，1MB 轮转）
 │   └── services/           # Wails 绑定服务：校验 / 统计 / 导出 / 悬浮球控制
 └── frontend/
     ├── src/                # Vue 3 应用
@@ -139,7 +152,7 @@ Miku_Chrono/
 | --- | --- |
 | Windows | `%APPDATA%\Miku_Chrono\mikuchrono.db` |
 
-备份只需导出或直接复制该文件。
+备份优先使用应用内导出（设置 → 数据 → 导出 JSON / CSV）。数据库处于 WAL 模式，若直接复制 `mikuchrono.db`，需同时带上 `mikuchrono.db-wal` 与 `mikuchrono.db-shm`（且最好在应用退出后复制），否则最新写入可能还在 `-wal` 里没有落盘。
 
 ## 📄 许可
 

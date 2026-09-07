@@ -110,6 +110,19 @@ var migrations = []string{
 	CREATE INDEX idx_entries_local_day ON entries(local_day);
 	CREATE INDEX idx_entries_activity_local_day ON entries(activity_id, local_day);
 	`,
+	// v4: query-shape indexes. The day-piece loader (today totals, heatmap,
+	// bar charts) and the overlap entry filter select on
+	// "ended_at > rangeStart AND started_at < rangeEnd"; started_at could
+	// never bound the scan (almost all history starts before tomorrow), so
+	// idx_entries_ended gives the range a seekable lower bound instead of a
+	// full table walk that grows with total history. The activity local-day
+	// index gains duration_seconds so the per-activity-per-day aggregate
+	// behind the overview page reads purely from the index.
+	`
+	CREATE INDEX idx_entries_ended ON entries(ended_at);
+	DROP INDEX IF EXISTS idx_entries_activity_local_day;
+	CREATE INDEX idx_entries_activity_local_day ON entries(activity_id, local_day, duration_seconds);
+	`,
 }
 
 // seedActivities are created on first launch so the check-in page is never

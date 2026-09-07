@@ -1,0 +1,8 @@
+# golangci-lint v2 configuration — run `golangci-lint run` (Taskfile: task lint).
+# The default linter set (errcheck, govet, staticcheck, unused) is kept as-is:
+# the codebase's deliberately ignored errors are all explicit `_` assignments,
+# which errcheck accepts without exemptions.
+version: "2"
+
+run:
+  timeout: 5m

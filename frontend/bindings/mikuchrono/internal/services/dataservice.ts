@@ -29,6 +29,7 @@ export function DataDir(): $CancellablePromise<string> {
 /**
  * ExportCSV writes every entry as CSV (Excel-friendly, with BOM).
  * Returns the written path, or "" when the user cancelled the dialog.
+ * Failures are logged via applog before propagating to the frontend toast.
  */
 export function ExportCSV(): $CancellablePromise<string> {
     return $Call.ByID(168703372);
@@ -37,6 +38,7 @@ export function ExportCSV(): $CancellablePromise<string> {
 /**
  * ExportJSON writes the full database (activities + entries) as JSON.
  * Returns the written path, or "" when the user cancelled the dialog.
+ * Failures are logged via applog before propagating to the frontend toast.
  */
 export function ExportJSON(): $CancellablePromise<string> {
     return $Call.ByID(3533327910);

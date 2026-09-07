@@ -30,3 +30,22 @@ tasks:
     summary: Runs the application in development mode
     cmds:
       - wails3 dev -config ./build/config.yml -port {{.VITE_PORT}}
+
+  test:
+    summary: Runs Go vet + tests, then the frontend lint + tests
+    cmds:
+      - go vet ./...
+      - go test ./...
+      - task: fe-test
+
+  fe-test:
+    summary: Runs the frontend lint and test suites
+    dir: frontend
+    cmds:
+      - pnpm lint
+      - pnpm test
+
+  lint:
+    summary: Runs golangci-lint over the Go sources (requires golangci-lint)
+    cmds:
+      - golangci-lint run

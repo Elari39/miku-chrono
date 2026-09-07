@@ -75,11 +75,10 @@ async function start(activityId: number): Promise<void> {
 
 /** Stop the running timer. Returns the recorded entry (null if discarded). */
 async function stop(): Promise<Entry | null> {
-  const entry = await TimerService.Stop();
-  // Refresh locally right away so the caller continues from an idle state;
-  // the broadcast event bumps `version` for the aggregate reloads.
-  await refresh();
-  return entry;
+  // The backend broadcasts timer:stopped after the stop settles; that event
+  // refreshes the state below — a local refresh here would fire a second
+  // GetState for the same change.
+  return TimerService.Stop();
 }
 
 const running = computed(() => state.running);

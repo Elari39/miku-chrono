@@ -4,11 +4,13 @@ import (
 	"embed"
 	"log"
 	"os"
+	"path/filepath"
 	"slices"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 
+	"mikuchrono/internal/applog"
 	"mikuchrono/internal/services"
 	"mikuchrono/internal/store"
 )
@@ -27,11 +29,22 @@ func main() {
 	startHidden := slices.Contains(os.Args[1:], "--minimized")
 
 	// Open (and migrate/seed) the SQLite database under the user config dir.
-	st, err := store.Open(mustDefaultDBPath())
+	dbPath := mustDefaultDBPath()
+	st, err := store.Open(dbPath)
 	if err != nil {
 		log.Fatalf("打开数据库失败: %v", err)
 	}
 	defer func() { _ = st.Close() }()
+
+	// File log next to the database for everything the user cannot see:
+	// background goroutine errors and panics. Before it exists (or if it
+	// fails to open) diagnostics stay on stderr only.
+	if l, err := applog.Open(filepath.Join(filepath.Dir(dbPath), "app.log")); err == nil {
+		defer func() { _ = l.Close() }()
+		applog.SetDefault(l)
+	} else {
+		log.Printf("打开应用日志失败: %v", err)
+	}
 
 	// Daily-goal notifications: one-minute background check, stopped when the
 	// app exits (the process is about to terminate anyway).
@@ -64,9 +77,12 @@ func main() {
 			Handler: application.AssetFileServerFS(assets),
 		},
 		// A second launch (e.g. boot autostart racing a manual start) resignals
-		// the running instance instead of creating a second tray + timer. The
-		// callback runs on a background goroutine, so UI calls go through
-		// InvokeSync.
+		// the running instance instead of creating a second tray + timer.
+		// The callback reads ballService.MainWindow only inside InvokeSync:
+		// wails starts the callback goroutine during application.New (before
+		// the field is assigned below), but the closure executes on the main
+		// thread — the same thread that assigns the field before app.Run —
+		// so the accesses are same-thread ordered, not racy.
 		SingleInstance: &application.SingleInstanceOptions{
 			UniqueID: "mikuchrono",
 			OnSecondInstanceLaunch: func(application.SecondInstanceData) {
@@ -187,6 +203,11 @@ func main() {
 	setupSystemTray(app, ballService, ballTimerItem, ballToggleItem)
 
 	if err := app.Run(); err != nil {
+		// log.Fatal would os.Exit past the defers above, skipping the WAL
+		// checkpoint on st.Close and the notifier stop — clean up by hand.
+		goalNotifier.Stop()
+		_ = st.Close()
+		applog.Printf("app run: %v", err)
 		log.Fatal(err)
 	}
 }

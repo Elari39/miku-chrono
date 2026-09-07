@@ -23,6 +23,9 @@ const closePromptOpen = ref(false);
 const closeActionChoice = ref<"hide" | "quit">("hide");
 
 onMounted(async () => {
+  // The ball window shares this SPA but has no close button — asking for
+  // the stored close action there would be a wasted IPC call.
+  if (isBallPage.value) return;
   try {
     const action = await BallService.GetCloseAction();
     if (!action) closePromptOpen.value = true;
@@ -30,6 +33,13 @@ onMounted(async () => {
     console.error("load close action failed", err);
   }
 });
+
+// Dismissing (Esc, overlay, ×) deliberately does NOT persist: the choice is
+// only saved on the explicit confirm below, so the prompt reappears next
+// launch until the user actually picks one.
+function dismissClosePrompt() {
+  closePromptOpen.value = false;
+}
 
 async function saveCloseAction() {
   try {
@@ -83,7 +93,7 @@ async function saveCloseAction() {
     <ToastHost />
 
     <!-- One-time choice for the main-window close button (changeable in 设置). -->
-    <Modal :open="closePromptOpen" title="点击主窗口 × 时希望怎样？" @close="saveCloseAction">
+    <Modal :open="closePromptOpen" title="点击主窗口 × 时希望怎样？" @close="dismissClosePrompt">
       <p class="mb-4 text-sm text-muted">
         主窗口右上角的关闭按钮可以隐藏到后台（应用与悬浮球继续运行），也可以直接退出应用。之后可在「设置
         → 悬浮球」中随时修改。

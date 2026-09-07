@@ -279,16 +279,25 @@ func (s *StatsService) Overview() ([]models.ActivityStat, error) {
 	if err != nil {
 		return nil, err
 	}
-	totalSecs, err := s.Store.TotalSecondsByActivity()
+	// One grouped query feeds both the all-time totals and the streak day
+	// sets (the SUM decomposes across days; the day keys are the sets). The
+	// overview reloads on each mount and on every timer start/stop, so this
+	// used to be two separate full-table aggregates.
+	dayTotals, err := s.Store.ActivityDayTotals()
 	if err != nil {
 		return nil, err
 	}
-	// One grouped query for every activity's active-day set: the overview
-	// reloads on each mount and on every timer start/stop, so a per-activity
-	// full-table scan here would multiply with the history size.
-	sets, err := s.Store.ActiveDaySets()
-	if err != nil {
-		return nil, err
+	totalSecs := make(map[int64]int64, len(dayTotals))
+	sets := make(map[int64]map[string]bool, len(dayTotals))
+	for id, days := range dayTotals {
+		set := make(map[string]bool, len(days))
+		var total int64
+		for d, secs := range days {
+			set[d] = true
+			total += secs
+		}
+		sets[id] = set
+		totalSecs[id] = total
 	}
 	out := make([]models.ActivityStat, 0, len(acts))
 	for _, a := range acts {

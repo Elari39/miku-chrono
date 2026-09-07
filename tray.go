@@ -2,10 +2,12 @@ package main
 
 import (
 	"fmt"
+	"runtime/debug"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
+	"mikuchrono/internal/applog"
 	"mikuchrono/internal/services"
 
 	_ "embed"
@@ -68,43 +70,52 @@ func pumpMenuState(tray *application.SystemTray, ball *services.BallService, tra
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for range ticker.C {
-		if ball.Timer == nil {
-			continue
-		}
-		st, err := ball.Timer.CachedState(time.Now())
-		if err != nil {
-			continue
-		}
-		var tooltip, timerLabel string
-		switch {
-		case st.Running:
-			elapsed := fmt.Sprintf("%s %s", st.ActivityName, formatElapsed(st.ElapsedSeconds))
-			tooltip = "Miku Chrono · " + elapsed
-			timerLabel = "停止计时 · " + elapsed
-		case st.LastActivityID != 0:
-			elapsed := fmt.Sprintf("%s %s", st.LastActivityName, formatElapsed(st.LastElapsedSeconds))
-			tooltip = "Miku Chrono · 上次：" + elapsed
-			timerLabel = "开始计时 · " + elapsed
-		default:
-			tooltip = "Miku Chrono · 未在计时"
-			timerLabel = "开始计时"
-		}
-		showLabel := "显示主窗口"
-		if ball.MainWindow != nil && ball.MainWindow.IsVisible() {
-			showLabel = "隐藏主窗口"
-		}
-		sig := tooltip + "|" + timerLabel + "|" + showLabel
-		if sig == last {
-			continue
-		}
-		last = sig
-		application.InvokeSync(func() {
-			tray.SetTooltip(tooltip)
-			trayTimerItem.SetLabel(timerLabel)
-			trayShowItem.SetLabel(showLabel)
-			ballTimerItem.SetLabel(timerLabel)
-			ballToggleItem.SetLabel(showLabel)
-		})
+		// The pump must survive its own bugs: a panic here used to take the
+		// whole app down. Recover, log, keep ticking.
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					applog.Printf("tray pump panic: %v\n%s", r, debug.Stack())
+				}
+			}()
+			if ball.Timer == nil {
+				return
+			}
+			st, err := ball.Timer.CachedState(time.Now())
+			if err != nil {
+				return
+			}
+			var tooltip, timerLabel string
+			switch {
+			case st.Running:
+				elapsed := fmt.Sprintf("%s %s", st.ActivityName, formatElapsed(st.ElapsedSeconds))
+				tooltip = "Miku Chrono · " + elapsed
+				timerLabel = "停止计时 · " + elapsed
+			case st.LastActivityID != 0:
+				elapsed := fmt.Sprintf("%s %s", st.LastActivityName, formatElapsed(st.LastElapsedSeconds))
+				tooltip = "Miku Chrono · 上次：" + elapsed
+				timerLabel = "开始计时 · " + elapsed
+			default:
+				tooltip = "Miku Chrono · 未在计时"
+				timerLabel = "开始计时"
+			}
+			showLabel := "显示主窗口"
+			if ball.MainWindow != nil && ball.MainWindow.IsVisible() {
+				showLabel = "隐藏主窗口"
+			}
+			sig := tooltip + "|" + timerLabel + "|" + showLabel
+			if sig == last {
+				return
+			}
+			last = sig
+			application.InvokeSync(func() {
+				tray.SetTooltip(tooltip)
+				trayTimerItem.SetLabel(timerLabel)
+				trayShowItem.SetLabel(showLabel)
+				ballTimerItem.SetLabel(timerLabel)
+				ballToggleItem.SetLabel(showLabel)
+			})
+		}()
 	}
 }
 
