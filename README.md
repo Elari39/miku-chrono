@@ -7,6 +7,7 @@
 ![Vue](https://img.shields.io/badge/Vue-3-42B883?logo=vue.js&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-Pure_Go-003B57?logo=sqlite&logoColor=white)
 ![Platform](https://img.shields.io/badge/Platform-Windows-0078D6?logo=windows&logoColor=white)
+[![CI](https://github.com/Elari39/miku-chrono/actions/workflows/ci.yml/badge.svg)](https://github.com/Elari39/miku-chrono/actions/workflows/ci.yml)
 
 ---
 
@@ -21,7 +22,7 @@
 ### ⏱️ 打卡计时
 
 - **互斥单一计时器**：同一时间只计一个活动，切换活动时自动结算并记录上一段
-- **计时记忆** 🆕：停止计时后，悬浮球置灰显示上次的活动与累计时长（如 `阅读 45:32`）；点击「开始计时」**延续上次的活动与累计时长**继续计时
+- **计时记忆**：停止计时后，悬浮球置灰显示上次的活动与累计时长（如 `阅读 45:32`）；点击「开始计时」**延续上次的活动与累计时长**继续计时
 - **分段记账，统计准确**：每次停止只把本次续计的时段写入记录，累计总长仅作展示与续计，统计与打卡数据不会被重复放大
 - 误触保护：不足 1 秒的会话自动丢弃，不产生垃圾记录
 
@@ -43,8 +44,10 @@
 
 ### 📊 记录与统计
 
-- 记录列表：分页、按活动/日期筛选，支持手动补记与编辑
-- 统计页：今日与累计时长、**连续打卡天数（streak）**、年度热力图、日堆积柱状图
+- 记录列表：分页、按活动/日期筛选，支持手动补记、编辑与删除
+- 统计页：**日 / 周 / 月 / 年**四个维度自由切换，每日（每月）专注堆积柱状图
+- 日视图附 **24 小时时间轴**：跨午夜记录按当天切片展示，并可一键跳转筛选后的记录列表
+- **连续打卡（streak）**：当前与最长连续天数，附日均时长、峰值日等汇总卡片
 
 ### 🧩 系统托盘
 
@@ -52,11 +55,20 @@
 - 动态菜单：计时中 `停止计时 · MM:SS`，空闲 `开始计时 · 上次时长`
 - 左键单击恢复主窗口
 
+### 🔔 提醒与系统集成
+
+- **每日目标提醒**：为活动设定每日目标分钟数，达成后弹出系统气泡通知（每活动每天至多一次，设置中可关闭）
+- **开机自启动**：注册 Windows 自启动项，并附带静默启动标记（开机仅唤起托盘与悬浮球）
+- **窗口位置记忆**：主窗口位置/尺寸与悬浮球位置跨启动恢复，并自动钳制到可见屏幕——拔掉外接显示器后窗口也不会跑到屏幕外
+- **关闭行为**：点主窗口关闭键默认隐藏到后台，可在设置改为直接退出
+- 单实例运行：重复启动会唤醒已运行的实例，不会开出第二个进程
+
 ### 💾 数据与设置
 
 - 数据存于本地 SQLite（纯 Go 驱动，无 CGO 依赖）
 - JSON / CSV（Excel 友好）一键导出备份
-- 关闭主窗口默认隐藏到后台（可改为直接退出）
+- 设置页：悬浮球显示/隐藏、关闭行为、开机自启动、每日目标提醒开关
+- 危险操作保护：清空全部记录需两步确认，删除活动前明确提示记录将一并删除
 
 ## 🛠️ 技术栈
 
@@ -92,13 +104,21 @@ wails3 dev
 ```bash
 wails3 build
 # 产物：bin/miku-chrono.exe（Windows）
+
+wails3 task package
+# 额外生成 NSIS 安装包：bin/miku-chrono-amd64-installer.exe
 ```
 
 > 构建流水线会自动生成前端产物（`frontend/dist`）与 TS 绑定，无需手动干预。
 
 ### 版本号约定
 
-应用版本统一维护在 `build/config.yml` 的 `info.version`；更新后运行 `wails3 task common:update:build-assets` 同步 `build/` 下的安装包与资源清单，再提交两者。
+应用版本维护在两处，更新时需同步：
+
+- `build/config.yml` 的 `info.version` —— 可执行文件与 NSIS 安装包的元数据
+- `frontend/package.json` 的 `version` —— 设置页展示的应用版本
+
+更新 `build/config.yml` 后运行 `wails3 task common:update:build-assets` 同步 `build/` 下的安装包与资源清单，再一并提交。
 
 ### 测试
 
@@ -123,20 +143,22 @@ pnpm test             # vitest：lib 纯函数、组件与 composables（90+ 个
 
 ```text
 Miku_Chrono/
-├── main.go                 # 入口：主窗口 / 悬浮球 / 右键菜单 / 关闭行为装配
-├── tray.go                 # 系统托盘 + 菜单状态同步泵（1s 轮询）
+├── main.go                 # 入口：主窗口 / 悬浮球 / 右键菜单 / 单实例 / 关闭行为装配
+├── tray.go                 # 系统托盘 + 菜单状态同步泵（1s 轮询，内存快照投影）
+├── shell_windows.go        # 平台钩子：Explorer 打开目录 / 原生保存对话框
 ├── DESIGN.md               # 设计系统规范（暖奶油画布 + 珊瑚强调色）
 ├── internal/
 │   ├── models/             # Go ↔ TypeScript 共享数据结构
 │   ├── store/              # SQLite 数据层：迁移 / 种子数据 / 全部 SQL
 │   ├── applog/             # 最小文件日志（后台 goroutine 错误留痕，1MB 轮转）
-│   └── services/           # Wails 绑定服务：校验 / 统计 / 导出 / 悬浮球控制
+│   └── services/           # Wails 绑定服务：校验 / 统计 / 导出 / 悬浮球 / 提醒
+│                           #   平台钩子也在本层：notify / autostart / 窗口钳制（_windows.go）
 └── frontend/
     ├── src/                # Vue 3 应用
-    │   ├── views/          # 打卡 / 统计 / 记录 / 活动 / 设置 / 悬浮球
-    │   ├── components/     # 通用组件（倒计时卡、图表、弹窗等）
-    │   ├── composables/    # useTimer（全局计时状态）、useToast
-    │   └── lib/            # API 汇总与格式化工具
+    │   ├── views/          # 打卡 / 统计 / 记录 / 设置 / 悬浮球
+    │   ├── components/     # 通用组件（计时卡、图表、弹窗、表单等）
+    │   ├── composables/    # useTimer / useToday / useVersionedLoad / useToast 等
+    │   └── lib/            # API 汇总与纯函数工具（格式化 / 统计周期 / 调色板）
     └── bindings/           # 由 wails3 自动生成的绑定（请勿手改）
 ```
 
@@ -144,7 +166,7 @@ Miku_Chrono/
 
 暖奶油色画布（`#faf9f5`）× 珊瑚强调色（`#cc785c`）× 深色信息面板的三元色板，配衬线展示字体与克制的阴影 —— 完整 token 与组件规范见 [DESIGN.md](DESIGN.md)。
 
-## 💾 数据存储位置
+## 🗄️ 数据存储位置
 
 数据库文件位于用户配置目录：
 
@@ -152,7 +174,7 @@ Miku_Chrono/
 | --- | --- |
 | Windows | `%APPDATA%\Miku_Chrono\mikuchrono.db` |
 
-备份优先使用应用内导出（设置 → 数据 → 导出 JSON / CSV）。数据库处于 WAL 模式，若直接复制 `mikuchrono.db`，需同时带上 `mikuchrono.db-wal` 与 `mikuchrono.db-shm`（且最好在应用退出后复制），否则最新写入可能还在 `-wal` 里没有落盘。
+备份优先使用应用内导出（设置 → 数据导出）。数据库处于 WAL 模式，若直接复制 `mikuchrono.db`，需同时带上 `mikuchrono.db-wal` 与 `mikuchrono.db-shm`（且最好在应用退出后复制），否则最新写入可能还在 `-wal` 里没有落盘。
 
 ## 📄 许可
 
