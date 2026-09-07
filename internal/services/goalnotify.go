@@ -22,10 +22,9 @@ const goalNotifyCheckInterval = time.Minute
 // for the stop.
 type GoalNotifier struct {
 	Store *store.Store
-	// Notify shows a system notification. When nil (tests, a future mobile
-	// shell) the package-default showNotification is used, which the
-	// //go:build windows implementation backs with a tray balloon and other
-	// platforms no-op. A mobile shell injects its own Android notifier here.
+	// Notify shows a system notification. When nil it falls back to the
+	// package-default showNotification, backed by a tray balloon via the
+	// //go:build windows implementation; tests inject a capture func here.
 	Notify func(title, body string)
 	stop   chan struct{}
 

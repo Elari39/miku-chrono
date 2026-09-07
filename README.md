@@ -72,7 +72,7 @@
 
 ### 平台支持
 
-本项目**当前仅支持 Windows**：构建、测试与发布均以 Windows 为准。macOS / Linux 暂未纳入构建验证（Wails v3 仍处 beta，交叉构建未验证）；数据目录代码本身跨平台，数据库路径规则对三个系统同样成立。
+本项目**当前仅支持 Windows**：构建、测试与发布均以 Windows 为准。
 
 ### 环境要求
 
@@ -133,13 +133,11 @@ Miku_Chrono/
 
 ## 💾 数据存储位置
 
-数据库文件位于各系统的用户配置目录：
+数据库文件位于用户配置目录：
 
 | 系统 | 路径 |
 | --- | --- |
 | Windows | `%APPDATA%\Miku_Chrono\mikuchrono.db` |
-| macOS | `~/Library/Application Support/Miku_Chrono/mikuchrono.db` |
-| Linux | `~/.config/Miku_Chrono/mikuchrono.db` |
 
 备份只需导出或直接复制该文件。
 

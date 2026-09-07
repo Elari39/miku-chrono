@@ -20,10 +20,10 @@ type DataService struct {
 	// state may have changed after a destructive clear so every window
 	// refreshes. Nil in tests.
 	Emit func(event string)
-	// OpenDir opens a directory in the platform's file manager (Windows
-	// wiring in main.go). Nil reports the platform as unsupported — the
-	// operation is meaningless outside a desktop shell (tests, a future
-	// mobile shell).
+	// OpenDir opens a directory in the platform's file manager (wired to
+	// Explorer by wireDesktopShell in shell_windows.go). Nil reports the
+	// operation as unsupported — it is meaningless outside the desktop
+	// shell (tests).
 	OpenDir func(dir string) error
 	// SaveFile asks the user where to save a file and returns the chosen
 	// path ("" when cancelled). Nil falls back to the data directory so

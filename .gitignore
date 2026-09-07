@@ -1,29 +1,11 @@
 # ---- 构建产物 ----
 bin/
 build/bin/
-build/linux/appimage/build/
 build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
 *.syso
 *.exe
 *.exe~
 *.dll
-*.so
-*.dylib
-
-# ---- 移动端构建产物（gomobile / Gradle）----
-*.apk
-*.aab
-*.aar
-.gradle/
-local.properties
-mobile/*.aar
-mobile/*.jar
-
-# Mobile generated (per-machine; overlays hold absolute paths)
-build/ios/xcode/overlay.json
-build/ios/xcode/gen/
-build/android/overlay.json
-build/android/gen/
 
 # ---- 前端生成物 ----
 frontend/dist/
@@ -57,4 +39,3 @@ desktop.ini
 
 # ---- 本地审查报告（不公开） ----
 项目问题与修复计划报告.md
-APK路线与优化余项.md

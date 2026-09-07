@@ -73,9 +73,6 @@ func main() {
 				application.InvokeSync(func() { showMainWindow(ballService) })
 			},
 		},
-		Mac: application.MacOptions{
-			ApplicationShouldTerminateAfterLastWindowClosed: true,
-		},
 	})
 
 	// Restore the main window's saved geometry when one exists; the position
