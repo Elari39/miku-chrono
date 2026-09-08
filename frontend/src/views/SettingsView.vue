@@ -239,7 +239,7 @@ onMounted(() => {
     </div>
 
     <p class="mt-8 text-center text-xs text-muted">
-      Miku Chrono v{{ appVersion }} · Wails v3 · {{ new Date().getFullYear() }}
+      Miku Chrono v{{ appVersion }} · Wails v3 · {{ new Date().getFullYear() }} · MIT License
     </p>
 
     <ConfirmDialog

@@ -178,4 +178,6 @@ Miku_Chrono/
 
 ## 📄 许可
 
-本项目目前**未附加开源许可证**，依据版权法默认保留所有权利。如需以开源协议（如 MIT / MPL-2.0）发布，请补充 `LICENSE` 文件。
+本项目基于 [MIT License](LICENSE) 协议开源发布。
+
+第三方资源许可另行说明：Inter 字体采用 SIL OFL 1.1，详见 `frontend/Inter Font License.txt`。
