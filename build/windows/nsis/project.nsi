@@ -23,7 +23,7 @@ Unicode true
 ## !define INFO_COMPANYNAME    "Miku Chrono" # Default "Miku Chrono"
 ## !define INFO_PRODUCTNAME    "Miku Chrono" # Default "Miku Chrono"
 ## !define INFO_PRODUCTVERSION "0.1.0"       # Default "0.1.0"
-## !define INFO_COPYRIGHT      "(c) 2026, Miku Chrono" # Default "© 2026, Miku Chrono"
+## !define INFO_COPYRIGHT      "(c) 2026, Miku Chrono" # Default "(c) 2026, Miku Chrono"
 ###
 ## !define PRODUCT_EXECUTABLE  "Application.exe"      # Default "${INFO_PROJECTNAME}.exe"
 ## !define UNINST_KEY_NAME     "UninstKeyInRegistry"  # Default "${INFO_COMPANYNAME}${INFO_PRODUCTNAME}"
