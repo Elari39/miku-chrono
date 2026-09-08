@@ -9,9 +9,9 @@ import (
 	"mikuchrono/internal/store"
 )
 
-func newBallTestStore(t *testing.T) *store.Store {
+func newPetTestStore(t *testing.T) *store.Store {
 	t.Helper()
-	st, err := store.Open(filepath.Join(t.TempDir(), "ball.db"))
+	st, err := store.Open(filepath.Join(t.TempDir(), "pet.db"))
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
@@ -54,10 +54,39 @@ func TestPersistThrottleLeadingAndTrailing(t *testing.T) {
 	var th persistThrottle
 	var mu sync.Mutex
 	saves := 0
-	bump := func() { mu.Lock(); saves++; mu.Unlock() }
-	count := func() int { mu.Lock(); defer mu.Unlock(); return saves }
+	var lastSave time.Time
+	bump := func() {
+		mu.Lock()
+		saves++
+		lastSave = time.Now()
+		mu.Unlock()
+	}
+	count := func() int {
+		mu.Lock()
+		defer mu.Unlock()
+		return saves
+	}
+	lastAt := func() time.Time {
+		mu.Lock()
+		defer mu.Unlock()
+		return lastSave
+	}
 
 	const interval = 60 * time.Millisecond
+	// Poll until cond holds instead of assuming fixed sleeps land where the
+	// assertions need them: a slow scheduler must not turn the timing into
+	// CI flakes.
+	waitFor := func(cond func() bool, msg string) {
+		t.Helper()
+		deadline := time.Now().Add(5 * time.Second)
+		for !cond() {
+			if time.Now().After(deadline) {
+				t.Fatal(msg)
+			}
+			time.Sleep(interval / 3)
+		}
+	}
+
 	th.trigger(interval, bump) // leading edge: immediate
 	if got := count(); got != 1 {
 		t.Fatalf("after first trigger saves = %d, want 1", got)
@@ -73,25 +102,23 @@ func TestPersistThrottleLeadingAndTrailing(t *testing.T) {
 	}
 
 	// The trailing save fires once the interval elapses.
-	time.Sleep(2 * interval)
-	if got := count(); got != 2 {
-		t.Fatalf("trailing save missing: saves = %d, want 2", got)
-	}
+	waitFor(func() bool { return count() == 2 }, "trailing save missing")
 
-	// After the burst, the throttle is idle again: the next call is a new
-	// leading edge.
+	// After the burst the throttle is idle again: once a full interval has
+	// passed since the trailing save, the next call is a new leading edge.
+	waitFor(func() bool { return time.Since(lastAt()) >= interval }, "trailing save never aged past the interval")
 	th.trigger(interval, bump)
 	if got := count(); got != 3 {
 		t.Fatalf("post-burst trigger saves = %d, want 3", got)
 	}
 }
 
-// TestBallSettings covers the store-backed ball settings: close-action
+// TestPetSettings covers the store-backed pet settings: close-action
 // round-trip with validation, the goal-notify default (missing = enabled),
-// and corrupt ball positions treated as never-saved.
-func TestBallSettings(t *testing.T) {
-	st := newBallTestStore(t)
-	s := &BallService{Store: st}
+// and corrupt pet positions treated as never-saved.
+func TestPetSettings(t *testing.T) {
+	st := newPetTestStore(t)
+	s := &PetService{Store: st}
 
 	// Close action: unset means empty (the frontend then prompts once).
 	if v, err := s.GetCloseAction(); err != nil || v != "" {
@@ -119,16 +146,52 @@ func TestBallSettings(t *testing.T) {
 	}
 
 	// Corrupt values fall back to "never saved" instead of erroring.
-	if err := s.SaveBallPosition(12, 34); err != nil {
+	if err := s.SavePetPosition(12, 34); err != nil {
 		t.Fatal(err)
 	}
-	if pos, err := s.GetBallPosition(); err != nil || !pos.Set || pos.X != 12 || pos.Y != 34 {
-		t.Fatalf("ball position = %+v, %v", pos, err)
+	if pos, err := s.GetPetPosition(); err != nil || !pos.Set || pos.X != 12 || pos.Y != 34 {
+		t.Fatalf("pet position = %+v, %v", pos, err)
 	}
-	if err := st.SetSetting(keyBallX, "not-a-number"); err != nil {
+	if err := st.SetSetting(keyPetX, "not-a-number"); err != nil {
 		t.Fatal(err)
 	}
-	if pos, err := s.GetBallPosition(); err != nil || pos.Set {
-		t.Fatalf("corrupt ball position must read as unset: %+v, %v", pos, err)
+	if pos, err := s.GetPetPosition(); err != nil || pos.Set {
+		t.Fatalf("corrupt pet position must read as unset: %+v, %v", pos, err)
+	}
+}
+
+// TestPetPositionLegacyMigration pins the lazy migration from the pre-pet
+// floating-ball keys: while pet_x/pet_y are missing, the ball position is
+// served; the first save switches to the new keys for good.
+func TestPetPositionLegacyMigration(t *testing.T) {
+	st := newPetTestStore(t)
+	s := &PetService{Store: st}
+
+	if err := st.SetSettings([][2]string{
+		{keyLegacyPetX, "100"},
+		{keyLegacyPetY, "200"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	pos, err := s.GetPetPosition()
+	if err != nil || !pos.Set || pos.X != 100 || pos.Y != 200 {
+		t.Fatalf("legacy ball position = %+v, %v", pos, err)
+	}
+
+	// The first save writes the new keys, which now take precedence.
+	if err := s.SavePetPosition(300, 400); err != nil {
+		t.Fatal(err)
+	}
+	if pos, err := s.GetPetPosition(); err != nil || pos.X != 300 || pos.Y != 400 {
+		t.Fatalf("pet position after save = %+v, %v", pos, err)
+	}
+
+	// A half-migrated install (only one legacy key) reads as never saved.
+	st2 := newPetTestStore(t)
+	if err := st2.SetSetting(keyLegacyPetX, "100"); err != nil {
+		t.Fatal(err)
+	}
+	if pos, err := (&PetService{Store: st2}).GetPetPosition(); err != nil || pos.Set {
+		t.Fatalf("half legacy position must read as unset: %+v, %v", pos, err)
 	}
 }

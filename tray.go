@@ -18,10 +18,9 @@ var appIcon []byte
 
 // setupSystemTray creates the notification-area icon with a control menu:
 // show/hide the main window, start/stop the timer and quit. Unlike the
-// floating ball it is always discoverable, so the app can never become
-// unreachable even when both windows are hidden. The ball menu items are
-// passed in so the same state pump can keep their labels in sync.
-func setupSystemTray(app *application.App, ball *services.BallService, ballTimerItem, ballToggleItem *application.MenuItem) *application.SystemTray {
+// desktop pet it is always discoverable, so the app can never become
+// unreachable even when both windows are hidden.
+func setupSystemTray(app *application.App, pet *services.PetService) *application.SystemTray {
 	tray := app.SystemTray.New()
 	tray.SetIcon(appIcon)
 	tray.SetTooltip("Miku Chrono")
@@ -32,40 +31,40 @@ func setupSystemTray(app *application.App, ball *services.BallService, ballTimer
 	menu.AddSeparator()
 	quitItem := menu.Add("退出应用")
 
-	showItem.OnClick(func(_ *application.Context) { _, _ = ball.ToggleMainWindow() })
-	timerItem.OnClick(func(_ *application.Context) { ball.ToggleTimerFromMenu() })
-	quitItem.OnClick(func(_ *application.Context) { ball.QuitApp() })
+	showItem.OnClick(func(_ *application.Context) { _, _ = pet.ToggleMainWindow() })
+	timerItem.OnClick(func(_ *application.Context) { pet.ToggleTimerFromMenu() })
+	quitItem.OnClick(func(_ *application.Context) { pet.QuitApp() })
 	tray.SetMenu(menu)
 
 	// Left click brings the main window forward (idempotent, so a
 	// double-click is harmless); right click shows the menu above.
-	tray.OnClick(func() { showMainWindow(ball) })
+	tray.OnClick(func() { showMainWindow(pet) })
 
-	go pumpMenuState(tray, ball, showItem, timerItem, ballTimerItem, ballToggleItem)
+	go pumpMenuState(tray, pet, showItem, timerItem)
 	return tray
 }
 
 // showMainWindow shows and focuses the main window; a visible window is only
 // focused, never hidden again.
-func showMainWindow(ball *services.BallService) {
-	if ball.MainWindow == nil {
+func showMainWindow(pet *services.PetService) {
+	if pet.MainWindow == nil {
 		return
 	}
-	if !ball.MainWindow.IsVisible() {
-		ball.MainWindow.Show()
+	if !pet.MainWindow.IsVisible() {
+		pet.MainWindow.Show()
 	}
-	if ball.MainWindow.IsMinimised() {
-		ball.MainWindow.UnMinimise()
+	if pet.MainWindow.IsMinimised() {
+		pet.MainWindow.UnMinimise()
 	}
-	ball.MainWindow.Focus()
+	pet.MainWindow.Focus()
 }
 
-// pumpMenuState keeps the tray tooltip and the tray/ball menu labels in sync
+// pumpMenuState keeps the tray tooltip and the tray menu labels in sync
 // with the timer state. Each tick projects elapsed seconds from the timer
 // service's in-memory snapshot (CachedState) instead of re-reading SQLite
 // every second; the snapshot re-syncs on state changes and at most once per
 // cache TTL, so out-of-band changes converge without per-tick queries.
-func pumpMenuState(tray *application.SystemTray, ball *services.BallService, trayShowItem, trayTimerItem, ballTimerItem, ballToggleItem *application.MenuItem) {
+func pumpMenuState(tray *application.SystemTray, pet *services.PetService, trayShowItem, trayTimerItem *application.MenuItem) {
 	last := ""
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
@@ -78,10 +77,10 @@ func pumpMenuState(tray *application.SystemTray, ball *services.BallService, tra
 					applog.Printf("tray pump panic: %v\n%s", r, debug.Stack())
 				}
 			}()
-			if ball.Timer == nil {
+			if pet.Timer == nil {
 				return
 			}
-			st, err := ball.Timer.CachedState(time.Now())
+			st, err := pet.Timer.CachedState(time.Now())
 			if err != nil {
 				return
 			}
@@ -106,7 +105,7 @@ func pumpMenuState(tray *application.SystemTray, ball *services.BallService, tra
 			// stays off the main thread.
 			application.InvokeSync(func() {
 				showLabel := "显示主窗口"
-				if ball.MainWindow != nil && ball.MainWindow.IsVisible() {
+				if pet.MainWindow != nil && pet.MainWindow.IsVisible() {
 					showLabel = "隐藏主窗口"
 				}
 				sig := tooltip + "|" + timerLabel + "|" + showLabel
@@ -117,8 +116,6 @@ func pumpMenuState(tray *application.SystemTray, ball *services.BallService, tra
 				tray.SetTooltip(tooltip)
 				trayTimerItem.SetLabel(timerLabel)
 				trayShowItem.SetLabel(showLabel)
-				ballTimerItem.SetLabel(timerLabel)
-				ballToggleItem.SetLabel(showLabel)
 			})
 		}()
 	}

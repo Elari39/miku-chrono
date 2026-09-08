@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
-import { BallService } from "./lib/api";
+import { PetService } from "./lib/api";
 import ToastHost from "./components/ToastHost.vue";
 import Modal from "./components/Modal.vue";
 import TimerPill from "./components/TimerPill.vue";
@@ -14,20 +14,20 @@ const navItems = [
   { to: "/settings", label: "设置" },
 ];
 
-// The floating ball window renders this same SPA; on /ball it shows only the
-// BallView without the app shell.
-const isBallPage = computed(() => route.path === "/ball");
+// The desktop-pet window renders this same SPA; on /pet it shows only the
+// PetView without the app shell.
+const isPetPage = computed(() => route.path === "/pet");
 
 // First-run prompt: choose what the main-window × button does.
 const closePromptOpen = ref(false);
 const closeActionChoice = ref<"hide" | "quit">("hide");
 
 onMounted(async () => {
-  // The ball window shares this SPA but has no close button — asking for
+  // The pet window shares this SPA but has no close button — asking for
   // the stored close action there would be a wasted IPC call.
-  if (isBallPage.value) return;
+  if (isPetPage.value) return;
   try {
-    const action = await BallService.GetCloseAction();
+    const action = await PetService.GetCloseAction();
     if (!action) closePromptOpen.value = true;
   } catch (err) {
     console.error("load close action failed", err);
@@ -43,7 +43,7 @@ function dismissClosePrompt() {
 
 async function saveCloseAction() {
   try {
-    await BallService.SetCloseAction(closeActionChoice.value);
+    await PetService.SetCloseAction(closeActionChoice.value);
   } catch (err) {
     console.error(err);
   }
@@ -52,7 +52,7 @@ async function saveCloseAction() {
 </script>
 
 <template>
-  <div v-if="isBallPage" class="h-full">
+  <div v-if="isPetPage" class="h-full">
     <router-view />
   </div>
 
@@ -95,8 +95,8 @@ async function saveCloseAction() {
     <!-- One-time choice for the main-window close button (changeable in 设置). -->
     <Modal :open="closePromptOpen" title="点击主窗口 × 时希望怎样？" @close="dismissClosePrompt">
       <p class="mb-4 text-sm text-muted">
-        主窗口右上角的关闭按钮可以隐藏到后台（应用与悬浮球继续运行），也可以直接退出应用。之后可在「设置
-        → 悬浮球」中随时修改。
+        主窗口右上角的关闭按钮可以隐藏到后台（应用与桌宠继续运行），也可以直接退出应用。之后可在「设置
+        → 桌宠」中随时修改。
       </p>
       <div class="space-y-2">
         <label
@@ -112,7 +112,7 @@ async function saveCloseAction() {
           <span>
             <span class="block text-sm font-medium text-ink">隐藏到后台（推荐）</span>
             <span class="block text-xs text-muted"
-              >应用与悬浮球继续运行，双击悬浮球即可恢复主窗口。</span
+              >应用与桌宠继续运行，双击桌宠即可恢复主窗口。</span
             >
           </span>
         </label>
@@ -128,7 +128,7 @@ async function saveCloseAction() {
           />
           <span>
             <span class="block text-sm font-medium text-ink">直接退出应用</span>
-            <span class="block text-xs text-muted">关闭主窗口时连同悬浮球一起退出。</span>
+            <span class="block text-xs text-muted">关闭主窗口时连同桌宠一起退出。</span>
           </span>
         </label>
       </div>

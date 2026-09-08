@@ -23,16 +23,32 @@ const (
 	CloseActionQuit = "quit"
 )
 
-// App-wide event names used by the ball feature.
+// App-wide event names used by the desktop-pet feature.
 const (
 	EventTimerStopped = "timer:stopped"
 	EventTimerStarted = "timer:started"
-	EventBallToast    = "ball:toast"
+	EventPetToast     = "pet:toast"
+	// EventGoalAchieved carries an activity name and is broadcast the moment
+	// the goal notifier detects that an activity's live daily total (running
+	// session included) crossed its daily goal.
+	EventGoalAchieved = "goal:achieved"
+	// EventPetMoving is emitted on every WindowDidMove of the pet window so
+	// the front-end can play the dragging animation: the native drag loop
+	// swallows webview mouse events, so the animation cannot be driven from
+	// the page itself.
+	EventPetMoving = "pet:moving"
 )
 
 const (
-	keyBallX       = "ball_x"
-	keyBallY       = "ball_y"
+	keyPetX = "pet_x"
+	keyPetY = "pet_y"
+
+	// Legacy position keys written by the pre-pet floating ball. They are
+	// only read as a fallback so an upgrade keeps the saved position; the
+	// first SavePetPosition writes the new keys.
+	keyLegacyPetX = "ball_x"
+	keyLegacyPetY = "ball_y"
+
 	keyCloseAction = "close_action"
 
 	// keyGoalNotify gates the daily-goal notification. A missing value means
@@ -45,28 +61,28 @@ const (
 	keyWinW = "win_w"
 	keyWinH = "win_h"
 
-	// positionPersistInterval throttles ball-position writes during drags.
+	// positionPersistInterval throttles pet-position writes during drags.
 	positionPersistInterval = time.Second
 )
 
-// BallService drives the floating ball window and the window-level behaviour
-// around it: toggling the main window, hiding/showing the ball, persisting the
-// ball position and the close-button behaviour. The App/window/Timer fields
+// PetService drives the desktop-pet window and the window-level behaviour
+// around it: toggling the main window, hiding/showing the pet, persisting the
+// pet position and the close-button behaviour. The App/window/Timer fields
 // are injected by main.go after window creation.
-type BallService struct {
+type PetService struct {
 	Store      *store.Store
 	App        *application.App
 	MainWindow *application.WebviewWindow
-	BallWindow *application.WebviewWindow
+	PetWindow  *application.WebviewWindow
 	Timer      *TimerService
 
 	mu       sync.Mutex
 	quitting bool
 
-	// Independent throttles: the ball and the main window must not suppress
+	// Independent throttles: the pet and the main window must not suppress
 	// each other's saves (they used to share one lastSaved timestamp).
-	ballPersist persistThrottle
-	winPersist  persistThrottle
+	petPersist persistThrottle
+	winPersist persistThrottle
 
 	// Registration guards: the bound Start* methods are callable from the
 	// frontend, and a repeated call must not register the handlers twice.
@@ -78,7 +94,7 @@ type BallService struct {
 
 // ToggleMainWindow shows the main window when it is hidden and hides it when
 // it is visible. Returns the resulting visibility.
-func (s *BallService) ToggleMainWindow() (bool, error) {
+func (s *PetService) ToggleMainWindow() (bool, error) {
 	if s.MainWindow == nil {
 		return false, nil
 	}
@@ -94,68 +110,89 @@ func (s *BallService) ToggleMainWindow() (bool, error) {
 	return true, nil
 }
 
-// HideBall hides the floating ball. When the main window is hidden too, it is
+// HidePet hides the desktop pet. When the main window is hidden too, it is
 // shown so the app stays reachable (the tray icon can also restore it).
-func (s *BallService) HideBall() error {
-	if s.BallWindow == nil {
+func (s *PetService) HidePet() error {
+	if s.PetWindow == nil {
 		return nil
 	}
-	s.BallWindow.Hide()
+	s.PetWindow.Hide()
 	if s.MainWindow != nil && !s.MainWindow.IsVisible() {
 		s.MainWindow.Show()
 	}
 	return nil
 }
 
-// ShowBall brings the floating ball back (settings page / restore entry).
-func (s *BallService) ShowBall() error {
-	if s.BallWindow == nil {
+// ShowPet brings the desktop pet back (settings page / restore entry).
+func (s *PetService) ShowPet() error {
+	if s.PetWindow == nil {
 		return nil
 	}
-	s.BallWindow.Show()
+	s.PetWindow.Show()
 	return nil
 }
 
-// IsBallVisible reports whether the floating ball is currently shown.
-func (s *BallService) IsBallVisible() bool {
-	return s.BallWindow != nil && s.BallWindow.IsVisible()
+// IsPetVisible reports whether the desktop pet is currently shown.
+func (s *PetService) IsPetVisible() bool {
+	return s.PetWindow != nil && s.PetWindow.IsVisible()
 }
 
-// GetBallPosition returns the persisted ball position; Set is false when no
+// GetPetPosition returns the persisted pet position; Set is false when no
 // position has ever been saved.
-func (s *BallService) GetBallPosition() (models.BallPosition, error) {
-	var pos models.BallPosition
-	x, _, err := s.Store.GetSetting(keyBallX)
+func (s *PetService) GetPetPosition() (models.PetPosition, error) {
+	var pos models.PetPosition
+	x, y, set, err := s.readPosition(keyPetX, keyPetY)
 	if err != nil {
 		return pos, err
 	}
-	y, _, err := s.Store.GetSetting(keyBallY)
+	if !set {
+		// Lazy migration: an install upgraded from the floating ball keeps
+		// the ball's saved position until the first save writes pet_x/pet_y.
+		x, y, set, err = s.readPosition(keyLegacyPetX, keyLegacyPetY)
+		if err != nil {
+			return pos, err
+		}
+	}
+	if !set {
+		return pos, nil
+	}
+	pos.X, pos.Y, pos.Set = x, y, true
+	return pos, nil
+}
+
+// readPosition parses one position key pair; set is false when either key is
+// missing or corrupt, mirroring the "never saved" semantics of the other
+// settings readers.
+func (s *PetService) readPosition(xKey, yKey string) (int, int, bool, error) {
+	x, _, err := s.Store.GetSetting(xKey)
 	if err != nil {
-		return pos, err
+		return 0, 0, false, err
+	}
+	y, _, err := s.Store.GetSetting(yKey)
+	if err != nil {
+		return 0, 0, false, err
 	}
 	xi, errX := strconv.Atoi(x)
 	yi, errY := strconv.Atoi(y)
 	if len(x) == 0 || len(y) == 0 || errX != nil || errY != nil {
-		// Missing or corrupt: treat as never saved.
-		return pos, nil
+		return 0, 0, false, nil
 	}
-	pos.X, pos.Y, pos.Set = xi, yi, true
-	return pos, nil
+	return xi, yi, true, nil
 }
 
-// SaveBallPosition persists the ball position across restarts, in one
+// SavePetPosition persists the pet position across restarts, in one
 // transaction so the pair can never be half-written by a crash mid-drag.
-func (s *BallService) SaveBallPosition(x, y int) error {
+func (s *PetService) SavePetPosition(x, y int) error {
 	return s.Store.SetSettings([][2]string{
-		{keyBallX, strconv.Itoa(x)},
-		{keyBallY, strconv.Itoa(y)},
+		{keyPetX, strconv.Itoa(x)},
+		{keyPetY, strconv.Itoa(y)},
 	})
 }
 
 // GetCloseAction returns the stored close-button behaviour. The empty string
 // means "never chosen yet" (treated as CloseActionHide everywhere; the main
 // window prompts the user once in that case).
-func (s *BallService) GetCloseAction() (string, error) {
+func (s *PetService) GetCloseAction() (string, error) {
 	v, found, err := s.Store.GetSetting(keyCloseAction)
 	if err != nil {
 		return "", err
@@ -167,7 +204,7 @@ func (s *BallService) GetCloseAction() (string, error) {
 }
 
 // SetCloseAction stores the close-button behaviour ("hide" or "quit").
-func (s *BallService) SetCloseAction(action string) error {
+func (s *PetService) SetCloseAction(action string) error {
 	if action != CloseActionHide && action != CloseActionQuit {
 		return fmt.Errorf("关闭行为必须是 hide 或 quit")
 	}
@@ -176,19 +213,20 @@ func (s *BallService) SetCloseAction(action string) error {
 
 // GetAutostart reports whether the app is registered to launch at boot
 // (Windows Run key; false and nil on unsupported platforms).
-func (s *BallService) GetAutostart() (bool, error) {
+func (s *PetService) GetAutostart() (bool, error) {
 	return autostartEnabled()
 }
 
 // SetAutostart registers or removes the boot launch entry. Enabling writes
 // the --minimized flag too, so a boot launch starts silently.
-func (s *BallService) SetAutostart(enabled bool) error {
+func (s *PetService) SetAutostart(enabled bool) error {
 	return setAutostart(enabled)
 }
 
 // GetGoalNotifyEnabled reports whether the daily-goal notification is on.
-// A missing setting means enabled (the default).
-func (s *BallService) GetGoalNotifyEnabled() (bool, error) {
+// A missing setting means enabled (the default); only an explicit "0"
+// disables, matching how the notifier itself reads the key.
+func (s *PetService) GetGoalNotifyEnabled() (bool, error) {
 	v, found, err := s.Store.GetSetting(keyGoalNotify)
 	if err != nil {
 		return false, err
@@ -196,11 +234,11 @@ func (s *BallService) GetGoalNotifyEnabled() (bool, error) {
 	if !found {
 		return true, nil
 	}
-	return v == "1", nil
+	return v != "0", nil
 }
 
 // SetGoalNotifyEnabled toggles the daily-goal notification.
-func (s *BallService) SetGoalNotifyEnabled(enabled bool) error {
+func (s *PetService) SetGoalNotifyEnabled(enabled bool) error {
 	v := "0"
 	if enabled {
 		v = "1"
@@ -210,7 +248,7 @@ func (s *BallService) SetGoalNotifyEnabled(enabled bool) error {
 
 // GetMainWindowBounds returns the persisted main-window geometry. Set is
 // false when the window has never been moved or resized.
-func (s *BallService) GetMainWindowBounds() (models.WindowBounds, error) {
+func (s *PetService) GetMainWindowBounds() (models.WindowBounds, error) {
 	var b models.WindowBounds
 	x, _, err := s.Store.GetSetting(keyWinX)
 	if err != nil {
@@ -247,7 +285,7 @@ func (s *BallService) GetMainWindowBounds() (models.WindowBounds, error) {
 // SaveMainWindowBounds persists the main-window geometry across restarts, in
 // one transaction so a crash mid-drag can never leave a mixed geometry (new X
 // with old height).
-func (s *BallService) SaveMainWindowBounds(x, y, width, height int) error {
+func (s *PetService) SaveMainWindowBounds(x, y, width, height int) error {
 	return s.Store.SetSettings([][2]string{
 		{keyWinX, strconv.Itoa(x)},
 		{keyWinY, strconv.Itoa(y)},
@@ -259,39 +297,39 @@ func (s *BallService) SaveMainWindowBounds(x, y, width, height int) error {
 // --- internal helpers (menu callbacks / window hooks) ---
 
 // ToggleTimerFromMenu stops the running timer, or resumes the last one when
-// idle, from the ball's context menu / system tray. TimerService broadcasts
+// idle, from the system tray. TimerService broadcasts
 // timer:started / timer:stopped itself after each successful change, so this
 // wrapper only surfaces failures as a transient toast.
-func (s *BallService) ToggleTimerFromMenu() {
+func (s *PetService) ToggleTimerFromMenu() {
 	if s.Timer == nil || s.App == nil {
 		return
 	}
 	st, err := s.Timer.GetState()
 	if err != nil {
-		s.App.Event.Emit(EventBallToast, "读取计时状态失败")
+		s.App.Event.Emit(EventPetToast, "读取计时状态失败")
 		return
 	}
 	if st.Running {
 		if _, err := s.Timer.Stop(); err != nil {
-			s.App.Event.Emit(EventBallToast, err.Error())
+			s.App.Event.Emit(EventPetToast, err.Error())
 		}
 		return
 	}
 	if _, err := s.Timer.StartLast(); err != nil {
-		s.App.Event.Emit(EventBallToast, err.Error())
+		s.App.Event.Emit(EventPetToast, err.Error())
 	}
 }
 
 // IsQuitting reports whether a real app quit is in progress (used by the
 // close hook to let the quit through without cancelling it).
-func (s *BallService) IsQuitting() bool {
+func (s *PetService) IsQuitting() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.quitting
 }
 
 // QuitApp terminates the whole application; the close hook no longer cancels.
-func (s *BallService) QuitApp() {
+func (s *PetService) QuitApp() {
 	s.mu.Lock()
 	s.quitting = true
 	s.mu.Unlock()
@@ -357,15 +395,19 @@ func (t *persistThrottle) trigger(interval time.Duration, save func()) {
 	t.mu.Unlock()
 }
 
-// StartPositionPersist throttled-saves the ball position whenever the ball
-// window moves (drag or programmatic restore). Safe to call before Run;
-// repeated calls register the handler only once.
-func (s *BallService) StartPositionPersist() {
-	if s.BallWindow == nil {
+// StartPositionPersist throttled-saves the pet position whenever the pet
+// window moves (drag or programmatic restore), and emits pet:moving on every
+// move so the front-end can keep its dragging animation in sync. Safe to
+// call before Run; repeated calls register the handler only once.
+func (s *PetService) StartPositionPersist() {
+	if s.PetWindow == nil {
 		return
 	}
 	s.positionPersistOnce.Do(func() {
-		s.BallWindow.OnWindowEvent(events.Common.WindowDidMove, func(*application.WindowEvent) {
+		s.PetWindow.OnWindowEvent(events.Common.WindowDidMove, func(*application.WindowEvent) {
+			if s.App != nil {
+				s.App.Event.Emit(EventPetMoving)
+			}
 			s.persistPositionSoon()
 		})
 	})
@@ -374,7 +416,7 @@ func (s *BallService) StartPositionPersist() {
 // StartMainWindowPersist throttled-saves the main-window bounds whenever it
 // moves or resizes. Safe to call before Run; repeated calls register the
 // handlers only once.
-func (s *BallService) StartMainWindowPersist() {
+func (s *PetService) StartMainWindowPersist() {
 	if s.MainWindow == nil {
 		return
 	}
@@ -388,7 +430,7 @@ func (s *BallService) StartMainWindowPersist() {
 	})
 }
 
-func (s *BallService) persistMainWindowSoon() {
+func (s *PetService) persistMainWindowSoon() {
 	if s.MainWindow == nil {
 		return
 	}
@@ -402,15 +444,15 @@ func (s *BallService) persistMainWindowSoon() {
 	})
 }
 
-func (s *BallService) persistPositionSoon() {
-	if s.BallWindow == nil {
+func (s *PetService) persistPositionSoon() {
+	if s.PetWindow == nil {
 		return
 	}
-	s.ballPersist.trigger(positionPersistInterval, func() {
-		if s.BallWindow == nil {
+	s.petPersist.trigger(positionPersistInterval, func() {
+		if s.PetWindow == nil {
 			return
 		}
-		x, y := s.BallWindow.Position()
-		_ = s.SaveBallPosition(x, y)
+		x, y := s.PetWindow.Position()
+		_ = s.SavePetPosition(x, y)
 	})
 }

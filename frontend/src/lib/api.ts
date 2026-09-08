@@ -6,18 +6,18 @@ import * as CategoryService from "../../bindings/mikuchrono/internal/services/ca
 import * as EntryService from "../../bindings/mikuchrono/internal/services/entryservice";
 import * as StatsService from "../../bindings/mikuchrono/internal/services/statsservice";
 import * as DataService from "../../bindings/mikuchrono/internal/services/dataservice";
-import * as BallService from "../../bindings/mikuchrono/internal/services/ballservice";
+import * as PetService from "../../bindings/mikuchrono/internal/services/petservice";
 import type {
   Activity,
   ActivityStat,
   ActivityTotal,
-  BallPosition,
   Category,
   DayBucket,
   Entry,
   EntryFilter,
   EntryList,
   MonthBucket,
+  PetPosition,
   StreakInfo,
   TimerState,
 } from "../../bindings/mikuchrono/internal/models/models";
@@ -29,19 +29,19 @@ export {
   EntryService,
   StatsService,
   DataService,
-  BallService,
+  PetService,
 };
 export type {
   Activity,
   ActivityStat,
   ActivityTotal,
-  BallPosition,
   Category,
   DayBucket,
   Entry,
   EntryFilter,
   EntryList,
   MonthBucket,
+  PetPosition,
   StreakInfo,
   TimerState,
 };

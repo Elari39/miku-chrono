@@ -10,10 +10,10 @@ import (
 )
 
 // goalNotifyCheckInterval is the ticker period of the notifier. The check is
-// two small SQL reads plus per-activity arithmetic, so one minute granularity
-// keeps the idle cost negligible; a goal reached mid-session is announced
-// within one minute instead of exactly at the second.
-const goalNotifyCheckInterval = time.Minute
+// two small SQL reads plus per-activity arithmetic, so half-minute
+// granularity keeps the idle cost negligible while still catching a goal
+// reached mid-session promptly (the whole point of the live add-on below).
+const goalNotifyCheckInterval = 30 * time.Second
 
 // GoalNotifier watches the daily totals of every active activity and shows a
 // system notification the first time one reaches its daily-goal minutes.
@@ -27,10 +27,14 @@ type GoalNotifier struct {
 	// package-default showNotification, backed by a tray balloon via the
 	// //go:build windows implementation; tests inject a capture func here.
 	Notify func(title, body string)
-	stop   chan struct{}
+	// Emit, when set (wired in main.go), broadcasts goal:achieved app-wide
+	// with the activity name so the desktop pet can play its celebration
+	// easter egg in the same tick the notification fires. Nil in tests.
+	Emit func(event string, data ...any)
+	stop chan struct{}
 
 	// lastCleanupDate remembers the day of the last stale-key sweep so the
-	// delete runs once per day instead of on every minute tick. Only the
+	// delete runs once per day instead of on every tick. Only the
 	// loop goroutine touches it.
 	lastCleanupDate string
 }
@@ -138,7 +142,9 @@ func (g *GoalNotifier) check() {
 		// store.GoalNotifiedKeyPrefix prefix), written once the notification
 		// has been shown.
 		key := fmt.Sprintf("%s%s_%d", store.GoalNotifiedKeyPrefix, today, a.ID)
-		if _, dup, err := g.Store.GetSetting(key); err == nil && dup {
+		if _, dup, err := g.Store.GetSetting(key); err != nil || dup {
+			// A read error also skips: the next tick retries, so a transient
+			// failure can never slip past the dedupe and double-notify.
 			continue
 		}
 		// Mark before notifying so a notification failure still dedupes with
@@ -155,6 +161,9 @@ func (g *GoalNotifier) check() {
 			"Miku Chrono · 目标达成",
 			fmt.Sprintf("「%s」今日累计已达 %d 分钟目标 🎉", a.Name, a.DailyGoalMinutes),
 		)
+		if g.Emit != nil {
+			g.Emit(EventGoalAchieved, a.Name)
+		}
 	}
 }
 

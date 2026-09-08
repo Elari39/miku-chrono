@@ -16,7 +16,7 @@ const minTimerSeconds = 1
 
 // Timer-chain settings in the meta table. The chain remembers the most
 // recently used activity plus the seconds accumulated before the current
-// session, so a stopped timer can be resumed ("开始计时") and the ball can
+// session, so a stopped timer can be resumed ("开始计时") and the pet can
 // show the previous session while idle. No schema migration is needed.
 const (
 	keyTimerActivity = "timer_activity"

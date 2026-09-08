@@ -1,0 +1,13 @@
+桌宠形象素材许可（Pet sprite assets licensing）
+=====================================================
+
+本目录下的桌宠形象（pet-*.png）为基于 **初音未来（Hatsune Miku）**
+的二次创作形象。初音未来的角色权利归 Crypton Future Media, INC. 所有。
+
+- 角色使用遵循 Piapro Character License（PCL，ピアプロ・キャラクター・ライセンス）：
+  https://piapro.jp/license/pcl
+- 分发本应用或本目录素材时，请保留角色版权署名：
+  "Hatsune Miku © Crypton Future Media, INC. www.piapro.net"
+- 本素材不属于仓库根目录的 MIT 许可范围，仅依 PCL 及上文署名要求随应用分发。
+- 素材为原创绘制的二创形象，未使用任何官方立绘原图；禁止用于违反 PCL 条款
+  或公序良俗的用途。若未来将本应用用于商业用途，需按 Crypton 的规则另行取得授权。

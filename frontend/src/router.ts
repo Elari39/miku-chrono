@@ -34,7 +34,12 @@ export const router = createRouter({
       component: () => import("./views/SettingsView.vue"),
       meta: { title: "设置" },
     },
-    // Full-window page for the floating ball (transparent frameless window).
-    { path: "/ball", name: "ball", component: () => import("./views/BallView.vue") },
+    // Full-window page for the desktop pet (transparent frameless window).
+    {
+      path: "/pet",
+      name: "pet",
+      component: () => import("./views/PetView.vue"),
+      meta: { title: "桌宠" },
+    },
   ],
 });

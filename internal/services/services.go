@@ -102,7 +102,7 @@ type TimerService struct {
 	Store *store.Store
 	// Emit, when set (wired in main.go), broadcasts the existing app-wide
 	// timer events after each successful state change so every window
-	// (floating ball, tray-linked views) refreshes immediately. Nil in tests.
+	// (desktop pet, tray-linked views) refreshes immediately. Nil in tests.
 	Emit func(event string)
 
 	// mu guards cached, the last state read from the store. The tray state

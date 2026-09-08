@@ -139,9 +139,9 @@ type ExportData struct {
 	Entries    []Entry    `json:"entries"`
 }
 
-// BallPosition is the persisted floating-ball window position. Set is false
+// PetPosition is the persisted desktop-pet window position. Set is false
 // when no position has ever been saved (the frontend then snaps to a default).
-type BallPosition struct {
+type PetPosition struct {
 	X   int  `json:"x"`
 	Y   int  `json:"y"`
 	Set bool `json:"set"`

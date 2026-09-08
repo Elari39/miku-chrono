@@ -21,8 +21,8 @@ const autostartValueName = "Miku Chrono"
 const autostartRunKey = `Software\Microsoft\Windows\CurrentVersion\Run`
 
 // autostartCommand builds the Run value for this executable: the quoted
-// absolute path plus --minimized so a boot launch starts silently (floating
-// ball + tray only, no main window).
+// absolute path plus --minimized so a boot launch starts silently (desktop
+// pet + tray only, no main window).
 func autostartCommand() (string, error) {
 	exe, err := os.Executable()
 	if err != nil {

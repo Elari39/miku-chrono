@@ -39,7 +39,23 @@ const archivedOpen = ref(false);
 // 「⋯」菜单全局单开：同一时刻至多一张活动卡片展开菜单。
 const openMenuId = ref<number | null>(null);
 
-const totalToday = computed(() => stats.value.reduce((sum, s) => sum + s.todaySeconds, 0));
+// Live goal progress: the running session's seconds count toward today's
+// totals the moment they accrue — not only once the stop settles the entry
+// into the database. `state.sessionElapsed` ticks once per second, so every
+// card (and the header total) updates live; the day clip mirrors the
+// backend's sessionSecondsToday so a session started yesterday does not
+// inflate today's bar across midnight.
+function liveTodaySeconds(s: ActivityStat): number {
+  if (!running.value || state.activityId !== s.activity.id) return s.todaySeconds;
+  const started = new Date(state.startedAt).getTime();
+  if (Number.isNaN(started)) return s.todaySeconds;
+  const dayStart = new Date();
+  dayStart.setHours(0, 0, 0, 0);
+  const todayPortion = Math.floor((Date.now() - Math.max(started, dayStart.getTime())) / 1000);
+  return s.todaySeconds + Math.max(0, Math.min(state.sessionElapsed, todayPortion));
+}
+
+const totalToday = computed(() => stats.value.reduce((sum, s) => sum + liveTodaySeconds(s), 0));
 
 // Group active activities by category (未分类 last). Only groups that
 // actually contain activities render.
@@ -221,7 +237,7 @@ async function doDelete() {
               v-for="s in g.stats"
               :key="s.activity.id"
               :activity="s.activity"
-              :today-seconds="s.todaySeconds"
+              :today-seconds="liveTodaySeconds(s)"
               :current-streak="s.currentStreak"
               :is-running="running && state.activityId === s.activity.id"
               :menu-open="openMenuId === s.activity.id"

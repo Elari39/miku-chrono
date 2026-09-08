@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
-import { DataService, BallService } from "../lib/api";
+import { DataService, PetService } from "../lib/api";
 import { useToast } from "../composables/useToast";
 import { errorMessage } from "../lib/errors";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
@@ -14,8 +14,8 @@ const dataDir = ref("");
 const confirmClear1 = ref(false);
 const confirmClear2 = ref(false);
 
-// Floating ball section.
-const ballVisible = ref(true);
+// Desktop pet section.
+const petVisible = ref(true);
 const closeAction = ref<"hide" | "quit">("hide");
 
 // Startup & reminders section.
@@ -67,24 +67,24 @@ async function doClear() {
   }
 }
 
-async function loadBallState() {
+async function loadPetState() {
   try {
-    ballVisible.value = await BallService.IsBallVisible();
-    const action = await BallService.GetCloseAction();
+    petVisible.value = await PetService.IsPetVisible();
+    const action = await PetService.GetCloseAction();
     closeAction.value = action === "quit" ? "quit" : "hide";
   } catch (err) {
     console.error(err);
   }
 }
 
-async function toggleBall() {
+async function togglePet() {
   try {
-    if (ballVisible.value) {
-      await BallService.HideBall();
+    if (petVisible.value) {
+      await PetService.HidePet();
     } else {
-      await BallService.ShowBall();
+      await PetService.ShowPet();
     }
-    ballVisible.value = !ballVisible.value;
+    petVisible.value = !petVisible.value;
   } catch (err) {
     error(errorMessage(err));
   }
@@ -92,7 +92,7 @@ async function toggleBall() {
 
 async function setCloseAction(action: "hide" | "quit") {
   try {
-    await BallService.SetCloseAction(action);
+    await PetService.SetCloseAction(action);
     closeAction.value = action;
     success(action === "quit" ? "已保存：关闭主窗口时直接退出" : "已保存：关闭主窗口时隐藏到后台");
   } catch (err) {
@@ -102,8 +102,8 @@ async function setCloseAction(action: "hide" | "quit") {
 
 async function loadStartupState() {
   try {
-    autostart.value = await BallService.GetAutostart();
-    goalNotify.value = await BallService.GetGoalNotifyEnabled();
+    autostart.value = await PetService.GetAutostart();
+    goalNotify.value = await PetService.GetGoalNotifyEnabled();
   } catch (err) {
     console.error(err);
   }
@@ -111,7 +111,7 @@ async function loadStartupState() {
 
 async function toggleAutostart() {
   try {
-    await BallService.SetAutostart(!autostart.value);
+    await PetService.SetAutostart(!autostart.value);
     autostart.value = !autostart.value;
     success(autostart.value ? "已开启开机自启动" : "已关闭开机自启动");
   } catch (err) {
@@ -121,7 +121,7 @@ async function toggleAutostart() {
 
 async function toggleGoalNotify() {
   try {
-    await BallService.SetGoalNotifyEnabled(!goalNotify.value);
+    await PetService.SetGoalNotifyEnabled(!goalNotify.value);
     goalNotify.value = !goalNotify.value;
     success(goalNotify.value ? "已开启每日目标提醒" : "已关闭每日目标提醒");
   } catch (err) {
@@ -131,7 +131,7 @@ async function toggleGoalNotify() {
 
 onMounted(() => {
   void loadDataDir();
-  void loadBallState();
+  void loadPetState();
   void loadStartupState();
 });
 </script>
@@ -141,18 +141,18 @@ onMounted(() => {
     <h1 class="mb-6 font-display text-2xl font-semibold text-ink">设置</h1>
 
     <div class="mc-card mb-4 p-5">
-      <h3 class="mb-1 text-sm font-semibold text-ink">悬浮球</h3>
+      <h3 class="mb-1 text-sm font-semibold text-ink">桌宠</h3>
       <p class="mb-4 text-xs text-muted">
-        桌面上的常驻计时小球：实时显示进行中的活动与用时，左键双击显示/隐藏主窗口，右键打开迷你菜单。
+        桌面上的初音未来小桌宠：用动作和表情反映计时状态，可拖拽移动，左键双击显示/隐藏主窗口。
       </p>
 
       <div class="flex items-center justify-between gap-4">
         <div>
-          <div class="text-sm text-body">显示悬浮球</div>
+          <div class="text-sm text-body">显示桌宠</div>
           <div class="text-xs text-muted">隐藏后可通过此开关或重启应用恢复。</div>
         </div>
-        <button class="mc-btn-ghost" @click="toggleBall">
-          {{ ballVisible ? "隐藏悬浮球" : "显示悬浮球" }}
+        <button class="mc-btn-ghost" @click="togglePet">
+          {{ petVisible ? "隐藏桌宠" : "显示桌宠" }}
         </button>
       </div>
 
@@ -167,7 +167,7 @@ onMounted(() => {
           @change="setCloseAction('hide')"
         />
         隐藏到后台（推荐）
-        <span class="text-xs text-muted">应用与悬浮球继续运行</span>
+        <span class="text-xs text-muted">应用与桌宠继续运行</span>
       </label>
       <label class="flex cursor-pointer items-center gap-2.5 py-1 text-sm text-body">
         <input
@@ -177,7 +177,7 @@ onMounted(() => {
           @change="setCloseAction('quit')"
         />
         直接退出应用
-        <span class="text-xs text-muted">连同悬浮球一起退出</span>
+        <span class="text-xs text-muted">连同桌宠一起退出</span>
       </label>
     </div>
 
@@ -189,7 +189,7 @@ onMounted(() => {
         <div>
           <div class="text-sm text-body">开机时自动启动</div>
           <div class="text-xs text-muted">
-            启动后以静默方式运行：仅显示悬浮球与系统托盘，点击托盘图标即可打开主窗口。
+            启动后以静默方式运行：仅显示桌宠与系统托盘，点击托盘图标即可打开主窗口。
           </div>
         </div>
         <button class="mc-btn-ghost" @click="toggleAutostart">

@@ -37,16 +37,6 @@ export interface ActivityTotal {
 }
 
 /**
- * BallPosition is the persisted floating-ball window position. Set is false
- * when no position has ever been saved (the frontend then snaps to a default).
- */
-export interface BallPosition {
-    "x": number;
-    "y": number;
-    "set": boolean;
-}
-
-/**
  * Category is a user-defined group that activities belong to. Activities
  * without a category are shown as "未分类".
  */
@@ -120,6 +110,16 @@ export interface MonthBucket {
     "month": string;
     "total": number;
     "byActivity": { [_ in string]?: number } | null;
+}
+
+/**
+ * PetPosition is the persisted desktop-pet window position. Set is false
+ * when no position has ever been saved (the frontend then snaps to a default).
+ */
+export interface PetPosition {
+    "x": number;
+    "y": number;
+    "set": boolean;
 }
 
 /**

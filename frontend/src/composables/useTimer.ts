@@ -113,9 +113,9 @@ export function useTimer() {
 // Kick off the initial fetch as soon as the module is imported.
 void refresh();
 
-// Refresh when the timer is stopped/started from the ball's context menu or
-// the system tray (the Go side emits these app-wide after each toggle —
-// including from the main window's own start/stop and a settings-page clear).
+// Refresh when the timer is stopped/started from the system tray (the Go
+// side emits these app-wide after each toggle — including from the main
+// window's own start/stop and a settings-page clear).
 Events.On("timer:stopped", () => {
   void refresh();
   version.value++;
